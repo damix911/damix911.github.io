@@ -209,10 +209,10 @@
         constructor() {
           this.windAngle = 20;
           this.windSpeed = 100;
-          this.sunElevation = 0;
+          this.sunElevation = 40;
           this.sunAzimuth = 0;
-          this.sunColor = "#f0f0c0";
-          this.skyColor = "#19484b";
+          this.sunColor = "#ffffca";
+          this.skyColor = "#ebfdff";
         },
 
         createLayerView: function(view) {
@@ -266,51 +266,51 @@
       var photo = document.getElementById("photo");
       setupLightingHandler("btnDawn", {
         windAngle: 20,
-        windSpeed: 100,
-        sunElevation: 45,
+        windSpeed: 50,
+        sunElevation: 35,
         sunAzimuth: 0,
-        sunColor: "#f0f0c0",
-        skyColor: "#19484b"
+        sunColor: "#c0c0c0",
+        skyColor: "#ebfdff"
       });
       setupLightingHandler("btnMorningFair", {
         windAngle: 20,
-        windSpeed: 500,
-        sunElevation: 45,
-        sunAzimuth: 0,
-        sunColor: "#f0f0c0",
-        skyColor: "#19484b"
+        windSpeed: 100,
+        sunElevation: 40,
+        sunAzimuth: -30,
+        sunColor: "#f0f0ca",
+        skyColor: "#ebfdff"
       });
       setupLightingHandler("btnMorningOvercast", {
         windAngle: 20,
         windSpeed: 100,
-        sunElevation: 45,
-        sunAzimuth: 0,
-        sunColor: "#404040",
-        skyColor: "#c0c0c0"
+        sunElevation: 40,
+        sunAzimuth: -30,
+        sunColor: "#606060",
+        skyColor: "#d0d0d0"
       });
       setupLightingHandler("btnNoon", {
-        windAngle: 20,
-        windSpeed: 100,
-        sunElevation: 70,
+        windAngle: 50,
+        windSpeed: 150,
+        sunElevation: 50,
         sunAzimuth: 0,
-        sunColor: "#f0d0c0",
-        skyColor: "#f0f0f0"
+        sunColor: "#f0f0f0",
+        skyColor: "#ebfdff"
       });
       setupLightingHandler("btnSunset", {
-        windAngle: 200,
+        windAngle: 80,
         windSpeed: 100,
         sunElevation: 45,
         sunAzimuth: 0,
         sunColor: "#ff8000",
-        skyColor: "#604000"
+        skyColor: "#ffa000"
       });
       setupLightingHandler("btnNight", {
-        windAngle: 200,
-        windSpeed: 100,
-        sunElevation: 45,
+        windAngle: -20,
+        windSpeed: 200,
+        sunElevation: 40,
         sunAzimuth: 0,
-        sunColor: "#f0f0f0",
-        skyColor: "#000080"
+        sunColor: "#808080",
+        skyColor: "#000010"
       });
 
       flash.addEventListener("animationend", function () {
