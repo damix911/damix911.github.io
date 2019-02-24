@@ -257,8 +257,7 @@
       window.points = [];
 
       view.on("click", function (evt) {
-        // window.points.push([evt.mapPoint.x, evt.mapPoint.y]);
-        console.log(JSON.stringify({ x: evt.mapPoint.x, y: evt.mapPoint.y }));
+        window.points.push([evt.mapPoint.x, evt.mapPoint.y]);
       });
 
       var shutterSound = new Audio("assets/shutter.mp3");
