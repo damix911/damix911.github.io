@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>Fire Play (DevSummit demo)</title>
+
+    <link rel="stylesheet" href="../../../../esri/css/main.css">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix.js"></script>
+    <script src="../../../dojo-config.js"></script>
+    <script src="../../../../dojo/dojo.js"></script>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+
+    <script>
+      require([
+        "esri/Map",
+        "esri/Graphic",
+
+        "esri/core/Collection",
+        "esri/core/watchUtils",
+
+        "esri/geometry/SpatialReference",
+        "esri/geometry/support/webMercatorUtils",
+
+        "esri/layers/GraphicsLayer",
+        "esri/layers/FeatureLayer",
+
+        "esri/widgets/LayerList",
+        "esri/widgets/Sketch",
+        "esri/widgets/Sketch/SketchViewModel",
+
+        "esri/views/MapView",
+        "esri/views/2d/layers/BaseLayerViewGL2D",
+
+        "dojo/text!./CorsicanFire.json",
+
+        "dojo/domReady!"
+      ], function(
+        Map, Graphic,
+        Collection, watchUtils,
+        SpatialReference, webMercatorUtils,
+        GraphicsLayer, FeatureLayer,
+        LayerList, Sketch, SketchViewModel,
+        MapView, BaseLayerViewGL2D,
+        fireJSON
+      ) {
+
+
+        // Subclass the custom layer view from BaseLayerViewGL2D.
+        var ArrowLayerView2D = BaseLayerViewGL2D.createSubclass({
+          // Locations of the two vertex attributes that we use. They
+          // will be bound to the shader program before linking.
+          aPosition: 0,
+          aOffset: 1,
+
+          constructor: function() {
+            // Geometrical transformations that must be recomputed
+            // from scratch at every frame.
+            this.transform = mat3.create();
+            this.translationToCenter = vec2.create();
+            this.screenTranslation = vec2.create();
+
+            // Geometrical transformations whose only a few elements
+            // must be updated per frame. Those elements are marked
+            // with NaN.
+            this.display = mat3.fromValues(NaN, 0, 0, 0, NaN, 0, -1, 1, 1);
+            this.screenScaling = vec3.fromValues(NaN, NaN, 1);
+
+            // Whether the vertex and index buffers need to be updated
+            // due to a change in the layer data.
+            this.needsUpdate = false;
+
+            // We listen for changes to the graphics collection of the layer
+            // and trigger the generation of new frames. A frame rendered while
+            // `needsUpdate` is true may cause an update of the vertex and
+            // index buffers.
+            var requestUpdate = function() {
+              this.needsUpdate = true;
+              this.requestRender();
+            }.bind(this);
+
+            this.watcher = watchUtils.on(
+              this,
+              "layer.graphics",
+              "change",
+              requestUpdate,
+              requestUpdate,
+              requestUpdate
+            );
+          },
+
+          // Called once a custom layer is added to the map.layers collection and this layer view is instantiated.
+          attach: function() {
+            var gl = this.context;
+
+            // Define and compile shaders.
+            var vertexSource =
+              "precision mediump float;" +
+              "uniform mat3 u_transform;" +
+              "uniform mat3 u_display;" +
+              "attribute vec2 a_position;" +
+              "attribute vec2 a_offset;" +
+              "varying vec2 v_offset;" +
+              "varying vec2 v_position;" +
+              "const float SIZE = 200.0;" +
+              "void main() {" +
+              "    gl_Position.xy = (u_display * (u_transform * vec3(a_position + a_offset * SIZE, 1.0) + vec3(0.0 * a_offset * SIZE, 0.0))).xy;" +
+              "    gl_Position.zw = vec2(0.0, 1.0);" +
+              "    v_offset = a_offset;" +
+              "    v_position = a_position;" +
+              "}";
+
+            var fragmentSource =
+              "precision mediump float;" +
+              "uniform float u_current_time;" +
+              "varying vec2 v_offset;" +
+              "varying vec2 v_position;" +
+              "const float N_RINGS = 6.0;" +
+              "const float PI = 3.14159;" +
+              "const vec3 COLOR = vec3(0.90, 0.90, 0.95);" +
+              "const float FREQ = 1.0;" +
+              `
+
+              float rand(vec2 n) {
+                return fract(sin(dot(n, vec2(12.9898, 4.1414))) * 43758.5453);
+              }
+
+
+              ` +
+              "void main() {" +
+              "    float l = length(v_offset);" +
+              "    float r = rand(v_position);" +
+              "    if (l > r) discard;" +
+              "    float intensity = clamp(cos(l * PI), 0.0, 1.0) * clamp(cos(2.0 * PI * (l * 2.0 * N_RINGS - FREQ * u_current_time)), 0.0, 1.0);" +
+              "    intensity *= pow(clamp(dot(v_offset / l, normalize(vec2(1.0, cos(r * u_current_time + r)))), 0.0, 1.0), 20.0);" +
+              "    gl_FragColor = vec4(COLOR * intensity, intensity);" +
+              "}";
+
+            var vertexShader = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vertexShader, vertexSource);
+            gl.compileShader(vertexShader);
+            console.log(gl.getShaderInfoLog(vertexShader));
+            var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fragmentShader, fragmentSource);
+            gl.compileShader(fragmentShader);
+            console.log(gl.getShaderInfoLog(fragmentShader));
+
+            // Create the shader program.
+            this.program = gl.createProgram();
+            gl.attachShader(this.program, vertexShader);
+            gl.attachShader(this.program, fragmentShader);
+
+            // Bind attributes.
+            gl.bindAttribLocation(this.program, this.aPosition, "a_position");
+            gl.bindAttribLocation(this.program, this.aOffset, "a_offset");
+
+            // Link.
+            gl.linkProgram(this.program);
+
+            // Shader objects are not needed anymore.
+            gl.deleteShader(vertexShader);
+            gl.deleteShader(fragmentShader);
+
+            // Retrieve uniform locations once and for all.
+            this.uTransform = gl.getUniformLocation(
+              this.program,
+              "u_transform"
+            );
+            this.uDisplay = gl.getUniformLocation(this.program, "u_display");
+            this.uCurrentTime = gl.getUniformLocation(
+              this.program,
+              "u_current_time"
+            );
+
+            // Create the vertex and index buffer. They are initially empty. We need to track the
+            // size of the index buffer because we use indexed drawing.
+            this.vertexBuffer = gl.createBuffer();
+            this.indexBuffer = gl.createBuffer();
+
+            // Number of indices in the index buffer.
+            this.indexBufferSize = 0;
+
+            // When certain conditions occur, we update the buffers and re-compute and re-encode
+            // all the attributes. When buffer update occurs, we also take note of the current center
+            // of the view state, and we reset a vector called `translationToCenter` to [0, 0], meaning that the
+            // current center is the same as it was when the attributes were recomputed.
+            this.centerAtLastUpdate = vec2.fromValues(
+              this.view.state.center[0],
+              this.view.state.center[1]
+            );
+          },
+
+          // Called once a custom layer is removed from the map.layers collection and this layer view is destroyed.
+          detach: function() {
+            // Stop watching the `layer.graphics` collection.
+            this.watcher.remove();
+
+            var gl = this.context;
+
+            // Delete buffers and programs.
+            gl.deleteBuffer(this.vertexBuffer);
+            gl.deleteBuffer(this.indexBuffer);
+            gl.deleteProgram(this.program);
+          },
+
+          // Called every time a frame is rendered.
+          render: function(renderParameters) {
+            var gl = renderParameters.context;
+            var state = renderParameters.state;
+
+            // Update vertex positions. This may trigger an update of
+            // the vertex coordinates contained in the vertex buffer.
+            // There are three kinds of updates:
+            //  - Modification of the layer.graphics collection ==> Buffer update
+            //  - The view state becomes non-stationary ==> Only view update, no buffer update
+            //  - The view state becomes stationary ==> Buffer update
+            this.updatePositions(renderParameters);
+
+            // If there is nothing to render we return.
+            if (this.indexBufferSize === 0) {
+              return;
+            }
+
+            // Update view `transform` matrix; it converts from map units to pixels.
+            mat3.identity(this.transform);
+            this.screenTranslation[0] = (devicePixelRatio * state.size[0]) / 2;
+            this.screenTranslation[1] = (devicePixelRatio * state.size[1]) / 2;
+            mat3.translate(
+              this.transform,
+              this.transform,
+              this.screenTranslation
+            );
+            mat3.rotate(
+              this.transform,
+              this.transform,
+              (Math.PI * state.rotation) / 180
+            );
+            this.screenScaling[0] = devicePixelRatio / view.state.resolution;
+            this.screenScaling[1] = -devicePixelRatio / view.state.resolution;
+            mat3.scale(this.transform, this.transform, this.screenScaling);
+            mat3.translate(
+              this.transform,
+              this.transform,
+              this.translationToCenter
+            );
+
+            // Update view `display` matrix; it converts from pixels to normalized device coordinates.
+            this.display[0] = 2 / (devicePixelRatio * state.size[0]);
+            this.display[4] = -2 / (devicePixelRatio * state.size[1]);
+
+            // Draw.
+            gl.useProgram(this.program);
+            gl.uniformMatrix3fv(this.uTransform, false, this.transform);
+            gl.uniformMatrix3fv(this.uDisplay, false, this.display);
+            gl.uniform1f(this.uCurrentTime, performance.now() / 1000.0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+            gl.enableVertexAttribArray(this.aPosition);
+            gl.enableVertexAttribArray(this.aOffset);
+            gl.vertexAttribPointer(this.aPosition, 2, gl.FLOAT, false, 16, 0);
+            gl.vertexAttribPointer(this.aOffset, 2, gl.FLOAT, false, 16, 8);
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+            gl.drawElements(
+              gl.TRIANGLES,
+              this.indexBufferSize,
+              gl.UNSIGNED_SHORT,
+              0
+            );
+
+            // Request new render because markers are animated.
+            this.requestRender();
+          },
+
+          // Called internally from render().
+          updatePositions: function(renderParameters) {
+            var gl = renderParameters.context;
+            var stationary = renderParameters.stationary;
+            var state = renderParameters.state;
+
+            // If we are not stationary we simply update the `translationToCenter` vector.
+            if (!stationary) {
+              vec2.sub(
+                this.translationToCenter,
+                this.centerAtLastUpdate,
+                state.center
+              );
+              this.requestRender();
+              return;
+            }
+
+            // If we are stationary, the `layer.graphics` collection has not changed, and
+            // we are centered on the `centerAtLastUpdate`, we do nothing.
+            if (
+              !this.needsUpdate &&
+              this.translationToCenter[0] === 0 &&
+              this.translationToCenter[1] === 0
+            ) {
+              return;
+            }
+
+            // Otherwise, we record the new encoded center, which imply a reset of the `translationToCenter` vector,
+            // we record the update time, and we proceed to update the buffers.
+            this.centerAtLastUpdate.set(state.center);
+            this.translationToCenter[0] = 0;
+            this.translationToCenter[1] = 0;
+            this.needsUpdate = false;
+
+            var graphics = this.layer.graphics;
+
+            // Generate vertex data.
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+            var vertexData = new Float32Array(16 * graphics.length);
+
+            var i = 0;
+            graphics.forEach(
+              function(graphic) {
+                var point = graphic.geometry;
+
+                // The (x, y) position is relative to the encoded center.
+                var x = point.x - this.centerAtLastUpdate[0];
+                var y = point.y - this.centerAtLastUpdate[1];
+
+                vertexData[i * 16 + 0] = x;
+                vertexData[i * 16 + 1] = y;
+                vertexData[i * 16 + 2] = -0.5;
+                vertexData[i * 16 + 3] = -0.5;
+                vertexData[i * 16 + 4] = x;
+                vertexData[i * 16 + 5] = y;
+                vertexData[i * 16 + 6] = 0.5;
+                vertexData[i * 16 + 7] = -0.5;
+                vertexData[i * 16 + 8] = x;
+                vertexData[i * 16 + 9] = y;
+                vertexData[i * 16 + 10] = -0.5;
+                vertexData[i * 16 + 11] = 0.5;
+                vertexData[i * 16 + 12] = x;
+                vertexData[i * 16 + 13] = y;
+                vertexData[i * 16 + 14] = 0.5;
+                vertexData[i * 16 + 15] = 0.5;
+
+                ++i;
+              }.bind(this)
+            );
+
+            gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+
+            // Generates index data.
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+
+            var indexData = new Uint16Array(6 * graphics.length);
+            for (var i = 0; i < graphics.length; ++i) {
+              indexData[i * 6 + 0] = i * 4 + 0;
+              indexData[i * 6 + 1] = i * 4 + 1;
+              indexData[i * 6 + 2] = i * 4 + 2;
+              indexData[i * 6 + 3] = i * 4 + 1;
+              indexData[i * 6 + 4] = i * 4 + 3;
+              indexData[i * 6 + 5] = i * 4 + 2;
+            }
+
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexData, gl.STATIC_DRAW);
+
+            // Record number of indices.
+            this.indexBufferSize = indexData.length;
+          }
+        });
+
+
+
+        // Subclass the custom layer view from GraphicsLayer.
+        var ArrowLayer = GraphicsLayer.createSubclass({
+          createLayerView: function (view) {
+            // We only support MapView, so we only need to return a
+            // custom layer view for the `2d` case.
+            if (view.type === "2d") {
+              return new ArrowLayerView2D({
+                view: view,
+                layer: this
+              });
+            }
+          }
+        });
+
+
+        // Subclass the custom layer view from BaseLayerViewGL2D.
+        var CustomLayerView2D = BaseLayerViewGL2D.createSubclass({
+          // Locations of the two vertex attributes that we use. They
+          // will be bound to the shader program before linking.
+          aPosition: 0,
+          aOffset: 1,
+          aRandom: 2,
+          aTimeSpan: 3,
+
+          constructor: function () {
+            // Geometrical transformations that must be recomputed
+            // from scratch at every frame.
+            this.transform = mat3.create();
+            this.translationToCenter = vec2.create();
+            this.screenTranslation = vec2.create();
+
+            // Geometrical transformations whose only a few elements
+            // must be updated per frame. Those elements are marked
+            // with NaN.
+            this.display = mat3.fromValues(
+              NaN,
+              0,
+              0,
+              0,
+              NaN,
+              0,
+              -1,
+              1,
+              1
+            );
+            this.screenScaling = vec3.fromValues(
+              NaN,
+              NaN,
+              1
+            );
+
+            // Whether the vertex and index buffers need to be updated
+            // due to a change in the layer data.
+            this.needsUpdate = false;
+
+            // We listen for changes to the graphics collection of the layer
+            // and trigger the generation of new frames. A frame rendered while
+            // `needsUpdate` is true may cause an update of the vertex and
+            // index buffers.
+            var requestUpdate = function () {
+              this.needsUpdate = true;
+              this.requestRender();
+            }.bind(this);
+
+            this.watcher = watchUtils.on(
+              this,
+              "layer.graphics",
+              "change",
+              requestUpdate,
+              requestUpdate,
+              requestUpdate
+            );
+          },
+
+          // Called once a custom layer is added to the map.layers collection and this layer view is instantiated.
+          attach: function () {
+            var gl = this.context;
+
+            // Define and compile shaders.
+            var vertexSource = `
+              precision mediump float;
+
+              attribute vec2 a_position;
+              attribute vec2 a_offset;
+              attribute vec4 a_random;
+              attribute vec2 a_timespan;
+
+              uniform vec4 u_tint;
+              uniform mat3 u_transform;
+              uniform mat3 u_display;
+              uniform float u_current_time;
+              uniform vec4 u_random;
+              uniform vec2 u_velocity;
+              uniform vec4 u_animation_parameters;
+              uniform float u_radius;
+              uniform float u_size;
+              uniform float u_period;
+              uniform float u_expansion_speed;
+              uniform vec4 u_life_parameters;
+
+              uniform vec2 u_size_values;
+              uniform vec4 u_size_easing;
+              uniform vec4 u_alpha_easing;
+              uniform vec4 u_light_easing;
+              uniform vec4 u_velocity_vectors;
+              uniform vec4 u_velocity_easing;
+              uniform vec4 u_life_easing;
+
+              const float PI = 3.14159;
+
+              varying vec2 v_offset;
+              varying vec2 v_frame_coords;
+              varying vec4 v_tint;
+
+              float clamper(float v) {
+                return clamp(v, 0.0, 0.5);
+              }
+
+              float factor(float v) {
+                return 0.5 * cos(2.0 * PI * clamper(v)) + 0.5;
+              }
+
+              float easing(float x, vec4 abcd) {
+                return factor(-(x - abcd[0]) * abcd[1] / 2.0) * factor((x - abcd[2]) * abcd[3] / 2.0);
+              }
+
+              float ease1(float x, float y, float t, vec4 abcd) {
+                float f = easing(t, abcd);
+                return mix(x, y, f);
+              }
+
+              vec2 ease2(vec2 x, vec2 y, float t, vec4 abcd) {
+                float f = easing(t, abcd);
+                return mix(x, y, f);
+              }
+
+              void main() {
+                vec4 random = mod(a_random + u_random, 1.0);
+                float phase = mod(u_current_time / u_period + random.z, 1.0);
+                float life_time = clamp((u_current_time - a_timespan[0]) / (a_timespan[1] - a_timespan[0]), 0.0, 1.0);
+
+                // if (life_time == 0.0 || life_time == 1.0) {
+                //   gl_Position.z = -2.0;
+                //   return;
+                // }
+
+                float size = ease1(u_size_values[0], u_size_values[1], phase, u_size_easing);
+                float alpha = ease1(0.0, 1.0, phase, u_alpha_easing);
+                float light = ease1(0.0, 1.0, phase, u_light_easing);
+                vec2 velocity = ease2(u_velocity_vectors.xy, u_velocity_vectors.zw, phase, u_velocity_easing);
+
+
+
+
+                gl_Position.xy = (u_display * (u_transform * vec3(a_position + a_offset * size + velocity * phase, 1.0))).xy;
+                gl_Position.zw = vec2(0.0, 1.0);
+
+                // Tint
+                v_tint = vec4(vec3(light), alpha) * u_tint;
+                v_tint.a *= ease1(0.0, 1.0, life_time, u_life_easing);
+
+                // Offset
+                v_offset = a_offset;
+
+                // Animation frame
+                float frame = mod(floor(-u_current_time * u_animation_parameters[3] + random.w * u_animation_parameters[0]), u_animation_parameters[0]);
+                float bs = 1.0 / u_animation_parameters[1];
+                float bt = 1.0 / u_animation_parameters[2];
+                float is = mod(frame, u_animation_parameters[1]);
+                float it = floor(frame / u_animation_parameters[2]);
+                v_frame_coords = vec2(is * bs, it * bt);
+
+                /*
+                float life_time = clamp((u_current_time - a_timespan[0]) / (a_timespan[1] - a_timespan[0]), 0.0, 1.0);
+                float life = 1.0 - pow(max(0.0, cos(u_life_parameters[0] * (life_time + u_life_parameters[1]) * 2.0 * 3.14159)), u_life_parameters[2]);
+                vec4 random = mod(a_random + u_random, 1.0);
+                float phase = u_current_time / u_period + random.z;
+                v_alpha = 1.0 - pow(max(cos(2.0 * PI * phase), 0.0), 10.0);
+                v_alpha *= life;
+                phase = mod(phase, 1.0);
+                float local_time = phase * u_period;
+                vec2 displacement = 2.0 * (random.xy - 0.5) * u_radius;
+                vec2 velocity = u_velocity + 2.0 * (random.xy - 0.5) * u_expansion_speed;
+                vec2 move = a_offset * u_size + displacement + velocity * local_time;
+                // gl_Position.xy = (u_display * (u_transform * vec3(a_position, 1.0) + vec3(move, 0.0))).xy;
+                gl_Position.xy = (u_display * (u_transform * vec3(a_position + move, 1.0))).xy;
+                gl_Position.zw = vec2(0.0, 1.0);
+                v_offset = a_offset;
+                float frame = mod(floor(-u_current_time * u_animation_parameters[3] + random.w * u_animation_parameters[0]), u_animation_parameters[0]);
+                float bs = 1.0 / u_animation_parameters[1];
+                float bt = 1.0 / u_animation_parameters[2];
+                float is = mod(frame, u_animation_parameters[1]);
+                float it = floor(frame / u_animation_parameters[2]);
+                v_frame_coords = vec2(is * bs, it * bt);
+                */
+              }
+            `;
+
+            var fragmentSource = `
+              precision mediump float;
+
+              uniform sampler2D u_texture;
+              uniform float u_current_time;
+              uniform vec4 u_animation_parameters;
+
+              varying vec2 v_offset;
+              varying vec2 v_frame_coords;
+              varying vec4 v_tint;
+
+              const float PI = 3.14159;
+
+              void main() {
+                  //gl_FragColor = vec4(v_alpha, 0.0, 0.0, v_alpha);
+                  vec2 baseUV = v_offset + 0.5;
+                  baseUV.y = 1.0 - baseUV.y;
+                  vec4 color = texture2D(u_texture, baseUV / u_animation_parameters.yz + v_frame_coords);
+                  // color.rgb = vec3(1.0);
+                  color *= v_tint;
+                  color.rgb *= color.a;
+                  gl_FragColor = color;
+              }
+            `;
+
+            var vertexShader = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vertexShader, vertexSource);
+            gl.compileShader(vertexShader);
+            console.log(gl.getShaderInfoLog(vertexShader));
+            var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fragmentShader, fragmentSource);
+            gl.compileShader(fragmentShader);
+            console.log(gl.getShaderInfoLog(fragmentShader));
+
+            // Create the shader program.
+            this.program = gl.createProgram();
+            gl.attachShader(this.program, vertexShader);
+            gl.attachShader(this.program, fragmentShader);
+
+            // Bind attributes.
+            gl.bindAttribLocation(this.program, this.aPosition, "a_position");
+            gl.bindAttribLocation(this.program, this.aOffset, "a_offset");
+            gl.bindAttribLocation(this.program, this.aRandom, "a_random");
+            gl.bindAttribLocation(this.program, this.aTimeSpan, "a_time_span");
+
+            // Link.
+            gl.linkProgram(this.program);
+
+            // Shader objects are not needed anymore.
+            gl.deleteShader(vertexShader);
+            gl.deleteShader(fragmentShader);
+
+            // Texture
+            this.smokeTexture = gl.createTexture();
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, this.smokeTexture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, smoke);
+            gl.generateMipmap(gl.TEXTURE_2D);
+
+            this.flameTexture = gl.createTexture();
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, this.flameTexture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, flame);
+            gl.generateMipmap(gl.TEXTURE_2D);
+
+            // Retrieve uniform locations once and for all.
+            this.uTransform = gl.getUniformLocation(this.program,"u_transform");
+            this.uDisplay = gl.getUniformLocation(this.program, "u_display");
+            this.uCurrentTime = gl.getUniformLocation(this.program, "u_current_time");
+            this.uTexture = gl.getUniformLocation(this.program, "u_texture");
+            this.uRandom = gl.getUniformLocation(this.program, "u_random");
+            this.uTint = gl.getUniformLocation(this.program, "u_tint");
+            this.uVelocity = gl.getUniformLocation(this.program, "u_velocity");
+            this.uAnimationParameters = gl.getUniformLocation(this.program, "u_animation_parameters");
+            this.uRadius = gl.getUniformLocation(this.program, "u_radius");
+            this.uSize = gl.getUniformLocation(this.program, "u_size");
+            this.uPeriod = gl.getUniformLocation(this.program, "u_period");
+            this.uExpansionSpeed = gl.getUniformLocation(this.program, "u_expansion_speed");
+            this.uLifeParameters = gl.getUniformLocation(this.program, "u_life_parameters");
+
+            // New params.
+            this.uSizeValues = gl.getUniformLocation(this.program, "u_size_values");
+            this.uSizeEasing = gl.getUniformLocation(this.program, "u_size_easing");
+            this.uAlphaEasing = gl.getUniformLocation(this.program, "u_alpha_easing");
+            this.uLightEasing = gl.getUniformLocation(this.program, "u_light_easing");
+            this.uVelocityVectors = gl.getUniformLocation(this.program, "u_velocity_vectors");
+            this.uVelocityEasing = gl.getUniformLocation(this.program, "u_velocity_easing");
+            this.uLifeEasing = gl.getUniformLocation(this.program, "u_life_easing");
+
+            // Create the vertex and index buffer. They are initially empty. We need to track the
+            // size of the index buffer because we use indexed drawing.
+            this.vertexBuffer = gl.createBuffer();
+            this.indexBuffer = gl.createBuffer();
+
+            // Number of indices in the index buffer.
+            this.indexBufferSize = 0;
+
+            // When certain conditions occur, we update the buffers and re-compute and re-encode
+            // all the attributes. When buffer update occurs, we also take note of the current center
+            // of the view state, and we reset a vector called `translationToCenter` to [0, 0], meaning that the
+            // current center is the same as it was when the attributes were recomputed.
+            this.centerAtLastUpdate = vec2.fromValues(this.view.state.center[0], this.view.state.center[1]);
+          },
+
+          // Called once a custom layer is removed from the map.layers collection and this layer view is destroyed.
+          detach: function () {
+            // Stop watching the `layer.graphics` collection.
+            this.watcher.remove();
+
+            var gl = this.context;
+
+            // Delete buffers and programs.
+            gl.deleteBuffer(this.vertexBuffer);
+            gl.deleteBuffer(this.indexBuffer);
+            gl.deleteProgram(this.program);
+          },
+
+          // Called every time a frame is rendered.
+          render: function (renderParameters) {
+            var gl = renderParameters.context;
+            var state = renderParameters.state;
+
+            // Update vertex positions. This may trigger an update of
+            // the vertex coordinates contained in the vertex buffer.
+            // There are three kinds of updates:
+            //  - Modification of the layer.graphics collection ==> Buffer update
+            //  - The view state becomes non-stationary ==> Only view update, no buffer update
+            //  - The view state becomes stationary ==> Buffer update
+            this.updatePositions(renderParameters);
+
+            // If there is nothing to render we return.
+            if (this.indexBufferSize === 0) {
+              return;
+            }
+
+            // Update view `transform` matrix; it converts from map units to pixels.
+            mat3.identity(this.transform);
+            this.screenTranslation[0] = (devicePixelRatio * state.size[0]) / 2;
+            this.screenTranslation[1] = (devicePixelRatio * state.size[1]) / 2;
+            mat3.translate(this.transform, this.transform, this.screenTranslation);
+            mat3.rotate(
+              this.transform,
+              this.transform,
+              (Math.PI * state.rotation) / 180
+            );
+            this.screenScaling[0] = devicePixelRatio / state.resolution;
+            this.screenScaling[1] = -devicePixelRatio / state.resolution;
+            mat3.scale(this.transform, this.transform, this.screenScaling);
+            mat3.translate(this.transform, this.transform, this.translationToCenter);
+
+            // Update camera `display` matrix; it converts from pixels to normalized device coordinates.
+            this.display[0] = 2 / (devicePixelRatio * state.size[0]);
+            this.display[4] = -2 / (devicePixelRatio * state.size[1]);
+
+            // Draw.
+            gl.useProgram(this.program);
+            gl.uniformMatrix3fv(this.uTransform, false, this.transform);
+            gl.uniformMatrix3fv(this.uDisplay, false, this.display);
+            gl.uniform1f(this.uCurrentTime, performance.now() / 1000.0);
+
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, this.smokeTexture);
+            gl.activeTexture(gl.TEXTURE1);
+            gl.bindTexture(gl.TEXTURE_2D, this.flameTexture);
+
+
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+            gl.enableVertexAttribArray(this.aPosition);
+            gl.enableVertexAttribArray(this.aOffset);
+            gl.enableVertexAttribArray(this.aRandom);
+            gl.enableVertexAttribArray(this.aTimeSpan);
+            gl.vertexAttribPointer(this.aPosition, 2, gl.FLOAT, false, 40, 0);
+            gl.vertexAttribPointer(this.aOffset, 2, gl.FLOAT, false, 40, 8);
+            gl.vertexAttribPointer(this.aRandom, 4, gl.FLOAT, false, 40, 16);
+            gl.vertexAttribPointer(this.aTimeSpan, 2, gl.FLOAT, false, 40, 32);
+
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+
+            // gl.uniform4f(this.uRandom, 0.1, 0.2, 0.3, 0.4);
+            // gl.uniform1f(this.uHeat, 1.0);
+            // gl.drawElements(gl.TRIANGLES, this.indexBufferSize, gl.UNSIGNED_SHORT, 0);
+            // gl.uniform4f(this.uRandom, 0.2, 0.3, 0.4, 0.5);
+            // gl.uniform1f(this.uHeat, 0.3);
+            // gl.drawElements(gl.TRIANGLES, this.indexBufferSize, gl.UNSIGNED_SHORT, 0);
+            // gl.uniform4f(this.uRandom, 0.3, 0.4, 0.5, 0.6);
+            // gl.uniform1f(this.uHeat, 0.8);
+            // gl.drawElements(gl.TRIANGLES, this.indexBufferSize, gl.UNSIGNED_SHORT, 0);
+            // gl.uniform4f(this.uRandom, 0.4, 0.5, 0.6, 0.7);
+            // gl.uniform1f(this.uHeat, 0.2);
+            // gl.drawElements(gl.TRIANGLES, this.indexBufferSize, gl.UNSIGNED_SHORT, 0);
+            // gl.uniform4f(this.uRandom, 0.5, 0.6, 0.7, 0.8);
+            // gl.uniform1f(this.uHeat, 0.6);
+
+
+
+
+
+
+
+
+            //gl.uniform4f(this.uAnimationParameters, 32, 8, 4, 10);
+
+            // gl.blendFunc(gl.ONE, gl.ONE);
+            // gl.uniform1i(this.uTexture, 1);
+            // gl.uniform4f(this.uAnimationParameters, 32, 8, 4, 20);
+            // gl.uniform4f(this.uRandom, 0.6, 0.7, 0.8, 0.9);
+            // gl.uniform2f(this.uWind, 0, 0);
+            // gl.uniform1f(this.uHeat, 0.05);
+            // gl.uniform1f(this.uSpread, 10.0);
+            // gl.drawElements(gl.TRIANGLES, this.indexBufferSize, gl.UNSIGNED_SHORT, 0);
+
+            // Burned ground
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+            gl.uniform1i(this.uTexture, 0);
+            gl.uniform4f(this.uRandom, 0.6, 0.7, 0.8, 0.9);
+            gl.uniform4f(this.uTint, 0.05, 0.05, 0.05, 0.05);
+            gl.uniform4f(this.uAnimationParameters, 1, 7, 7, 10);
+            gl.uniform1f(this.uPeriod, 10.0);
+            gl.uniform2f(this.uSizeValues, 400, 400);
+            gl.uniform4f(this.uSizeEasing, 0, 10, 1, 10);
+            gl.uniform4f(this.uAlphaEasing, 0.1, 10, 0.9, 10);
+            gl.uniform4f(this.uLightEasing, 0, 10, 1, 10);
+            gl.uniform4f(this.uVelocityVectors, 0, 0, 0, 0);
+            gl.uniform4f(this.uVelocityEasing, 0, 10, 1, 10);
+            gl.uniform4f(this.uLifeEasing, 0.1, 10.0, 1, 10.0);
+            gl.drawElements(gl.TRIANGLES, this.indexBufferSize, gl.UNSIGNED_SHORT, 0);
+
+            // Smoke shadow
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+            gl.uniform1i(this.uTexture, 0);
+            gl.uniform4f(this.uRandom, 0.6, 0.7, 0.8, 0.9);
+            gl.uniform4f(this.uTint, 0.1, 0.1, 0.1, 0.1);
+            gl.uniform4f(this.uAnimationParameters, 45, 7, 7, 10);
+            gl.uniform1f(this.uPeriod, 10.0);
+            gl.uniform2f(this.uSizeValues, 300, 800);
+            gl.uniform4f(this.uSizeEasing, 0.65, 1.64, 1.16, 1.27);
+            gl.uniform4f(this.uAlphaEasing, 0.1, 10, 0.22, 2.27);
+            gl.uniform4f(this.uLightEasing, 0.45, 1.74, 1, 10);
+            gl.uniform4f(this.uVelocityVectors, 866, -500, 400, -1200);
+            gl.uniform4f(this.uVelocityEasing, 0.35, 3, 1.16, 1.27);
+            gl.uniform4f(this.uLifeEasing, 0.1, 10.0, 0.9, 10.0);
+            gl.drawElements(gl.TRIANGLES, this.indexBufferSize, gl.UNSIGNED_SHORT, 0);
+
+            // Flame
+            gl.blendFunc(gl.ONE, gl.ONE);
+            gl.uniform1i(this.uTexture, 1);
+            gl.uniform4f(this.uRandom, 0.6, 0.7, 0.8, 0.9);
+            gl.uniform4f(this.uTint, 0.4, 0.4, 0.4, 0.4);
+            gl.uniform4f(this.uAnimationParameters, 32, 8, 4, 10);
+            gl.uniform1f(this.uPeriod, 10.0);
+            gl.uniform2f(this.uSizeValues, 150, 150);
+            gl.uniform4f(this.uSizeEasing, 0, 10, 1, 10);
+            gl.uniform4f(this.uAlphaEasing, 0.1, 10, 0.9, 10);
+            gl.uniform4f(this.uLightEasing, 0, 10, 1, 10);
+            gl.uniform4f(this.uVelocityVectors, 0, 0, 0, 0);
+            gl.uniform4f(this.uVelocityEasing, 0, 10, 1, 10);
+            gl.uniform4f(this.uLifeEasing, 0.1, 10.0, 0.9, 10.0);
+            gl.drawElements(gl.TRIANGLES, this.indexBufferSize, gl.UNSIGNED_SHORT, 0);
+
+            // Smoke
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+            gl.uniform1i(this.uTexture, 0);
+            gl.uniform4f(this.uRandom, 0.6, 0.7, 0.8, 0.9);
+            gl.uniform4f(this.uTint, 1, 1, 1, 1);
+            gl.uniform4f(this.uAnimationParameters, 45, 7, 7, 10);
+            gl.uniform1f(this.uPeriod, 10.0);
+            gl.uniform2f(this.uSizeValues, 300, 800);
+            gl.uniform4f(this.uSizeEasing, 0.65, 1.64, 1.16, 1.27);
+            gl.uniform4f(this.uAlphaEasing, 0.1, 10, 0.22, 2.27);
+            gl.uniform4f(this.uLightEasing, 0.45, 1.74, 1, 10);
+            gl.uniform4f(this.uVelocityVectors, 1000, 0, 500, 1000);
+            gl.uniform4f(this.uVelocityEasing, 0.35, 3, 1.16, 1.27);
+            gl.uniform4f(this.uLifeEasing, 0.1, 10.0, 0.9, 10.0);
+            gl.drawElements(gl.TRIANGLES, this.indexBufferSize, gl.UNSIGNED_SHORT, 0);
+
+
+            // Request new render because markers are animated.
+            this.requestRender();
+          },
+
+          // Called internally from render().
+          updatePositions: function (renderParameters) {
+            var gl = renderParameters.context;
+            var stationary = renderParameters.stationary;
+            var state = renderParameters.state;
+
+            // If we are not stationary we simply update the `translationToCenter` vector.
+            if (!stationary) {
+              vec2.sub(this.translationToCenter, this.centerAtLastUpdate, state.center);
+              this.requestRender();
+              return;
+            }
+
+            // If we are stationary, the `layer.graphics` collection has not changed, and
+            // we are centered on the `centerAtLastUpdate`, we do nothing.
+            if (!this.needsUpdate && this.translationToCenter[0] === 0 && this.translationToCenter[1] === 0) {
+              return;
+            }
+
+            // We record the new encoded center, which imply a reset of the `translationToCenter` vector,
+            // we record the update time, and we proceed to update the buffers.
+            this.centerAtLastUpdate.set(state.center);
+            this.translationToCenter[0] = 0;
+            this.translationToCenter[1] = 0;
+            this.needsUpdate = false;
+
+            var graphics = this.layer.graphics;
+
+            const VALUES_PER_PARTICLE = 40;
+            const PARTICLES_PER_GRAPHIC = 1;
+            const INDICES_PER_PARTICLE = 6;
+            const VERTICES_PER_PARTICLE = 4;
+
+            // Generates vertex data.
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+            var vertexData = new Float32Array(VALUES_PER_PARTICLE * graphics.length * PARTICLES_PER_GRAPHIC);
+
+            var i = 0;
+            graphics.forEach(function (graphic) {
+              var point = graphic.geometry;
+              var startTime = graphic.attributes.START_TIME;
+              var endTime = graphic.attributes.END_TIME;
+
+              // Position are relative to the encoded center.
+              // Precision optimization - 1
+              var x = point.x - this.centerAtLastUpdate[0];
+              var y = point.y - this.centerAtLastUpdate[1];
+              // var x = point.rings[0][0][0] - this.centerAtLastUpdate[0];
+              // var y = point.rings[0][0][1] - this.centerAtLastUpdate[1];
+
+              for (let p = 0; p < PARTICLES_PER_GRAPHIC; ++p) {
+                const rand0 = Math.random();
+                const rand1 = Math.random();
+                const rand2 = Math.random();
+                const rand3 = Math.random();
+
+                const base = VALUES_PER_PARTICLE * (i * PARTICLES_PER_GRAPHIC + p);
+                vertexData[base + 0] = x;
+                vertexData[base + 1] = y;
+                vertexData[base + 2] = -0.5;
+                vertexData[base + 3] = -0.5;
+                vertexData[base + 4] = rand0;
+                vertexData[base + 5] = rand1;
+                vertexData[base + 6] = rand2;
+                vertexData[base + 7] = rand3;
+                vertexData[base + 8] = startTime;
+                vertexData[base + 9] = endTime;
+
+                vertexData[base + 10] = x;
+                vertexData[base + 11] = y;
+                vertexData[base + 12] = 0.5;
+                vertexData[base + 13] = -0.5;
+                vertexData[base + 14] = rand0;
+                vertexData[base + 15] = rand1;
+                vertexData[base + 16] = rand2;
+                vertexData[base + 17] = rand3;
+                vertexData[base + 18] = startTime;
+                vertexData[base + 19] = endTime;
+
+                vertexData[base + 20] = x;
+                vertexData[base + 21] = y;
+                vertexData[base + 22] = -0.5;
+                vertexData[base + 23] = 0.5;
+                vertexData[base + 24] = rand0;
+                vertexData[base + 25] = rand1;
+                vertexData[base + 26] = rand2;
+                vertexData[base + 27] = rand3;
+                vertexData[base + 28] = startTime;
+                vertexData[base + 29] = endTime;
+
+                vertexData[base + 30] = x;
+                vertexData[base + 31] = y;
+                vertexData[base + 32] = 0.5;
+                vertexData[base + 33] = 0.5;
+                vertexData[base + 34] = rand0;
+                vertexData[base + 35] = rand1;
+                vertexData[base + 36] = rand2;
+                vertexData[base + 37] = rand3;
+                vertexData[base + 38] = startTime;
+                vertexData[base + 39] = endTime;
+              }
+
+              ++i;
+            }.bind(this));
+
+            gl.bufferData(
+              gl.ARRAY_BUFFER,
+              vertexData,
+              gl.STATIC_DRAW
+            );
+
+            // Generates index data.
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+
+            var indexData = new Uint16Array(6 * graphics.length * PARTICLES_PER_GRAPHIC);
+            for (var i = 0; i < graphics.length; ++i) {
+              for (let p = 0; p < PARTICLES_PER_GRAPHIC; ++p) {
+                const baseIndex = INDICES_PER_PARTICLE * (i * PARTICLES_PER_GRAPHIC + p);
+                const baseVertex = VERTICES_PER_PARTICLE * (i * PARTICLES_PER_GRAPHIC + p);
+                indexData[baseIndex + 0] = baseVertex + 0;
+                indexData[baseIndex + 1] = baseVertex + 1;
+                indexData[baseIndex + 2] = baseVertex + 2;
+                indexData[baseIndex + 3] = baseVertex + 1;
+                indexData[baseIndex + 4] = baseVertex + 3;
+                indexData[baseIndex + 5] = baseVertex + 2;
+              }
+            }
+
+            gl.bufferData(
+              gl.ELEMENT_ARRAY_BUFFER,
+              indexData,
+              gl.STATIC_DRAW
+            );
+
+            // Record number of indices.
+            this.indexBufferSize = indexData.length;
+          }
+        });
+
+        // Subclass the custom layer view from GraphicsLayer.
+        var CustomLayer = GraphicsLayer.createSubclass({
+          createLayerView: function (view) {
+            // We only support MapView, so we only need to return a
+            // custom layer view for the `2d` case.
+            if (view.type === "2d") {
+              return new CustomLayerView2D({
+                view: view,
+                layer: this
+              });
+            }
+          }
+        });
+
+        // var windLayer = new FeatureLayer({
+        //   title: "Wind Measurements"
+        // });
+        // windLayer.fields = [
+        //   {
+        //     name: "ObjectID",
+        //     alias: "ObjectID",
+        //     type: "oid"
+        //   },
+        //   {
+        //     name: "Direction",
+        //     alias: "Direction",
+        //     type: "double"
+        //   }
+        // ];
+        // windLayer.renderer = {
+        //   type: "simple",
+        //   symbol: {
+        //     type: "picture-marker",
+        //     url: "http://ddamico.esri.com/arcgis-js-api-4-extra/ArrowMarker.png",
+        //     width: "40px",
+        //     height: "40px"
+        //   },
+        //   // symbol: {
+        //   //   type: "simple-marker",
+        //   //   style: "cross",
+        //   //   outline: {
+        //   //     width: "1px",
+        //   //     color: "white"
+        //   //   },
+        //   //   size: "20px",
+        //   // },
+        //   visualVariables: [
+        //     {
+        //       type: "rotation",
+        //       field: "Direction",
+        //       rotationType: "geographic"
+        //     }
+        //   ]
+        // };
+
+        var windLayer = new ArrowLayer({
+          title: "Wind Measurements",
+          visible: false
+        });
+        windLayer.fields = [
+          {
+            name: "ObjectID",
+            alias: "ObjectID",
+            type: "oid"
+          },
+          {
+            name: "Direction",
+            alias: "Direction",
+            type: "double"
+          }
+        ];
+
+        let cnt = 0;
+        var windMeasurements = [];
+        for (let i = -5; i <= 5; ++i) {
+          for (let j = -8; j <= 8; ++j) {
+            ++cnt;
+            windMeasurements.push({
+              geometry: webMercatorUtils.geographicToWebMercator({
+                type: "point",
+                x: 9.4 + j * 0.001,
+                y: 41.763 + i * 0.001
+              }),
+              attributes: {
+                ObjectID: cnt,
+                Direction: 90 + 20 * (2 * Math.random() - 1)
+              }
+            });
+          }
+        }
+        windLayer.graphics = windMeasurements;
+
+        // Create an instance of the custom layer with 4 initial graphics.
+        var layer = new CustomLayer({
+          title: "Fire Timelapse"
+        });
+
+        // Create the map and the view.
+        var map = new Map({
+          basemap: "satellite",
+          layers: [
+            layer,
+            windLayer
+          ]
+        });
+
+        var view = new MapView({
+          container: "viewDiv",
+          map: map,
+          // center: [-96.8113038, 32.768903],
+          // zoom: 18
+          center: [9.4097542, 41.7634422],
+          zoom: 16
+        });
+
+        let smoke = new Image();
+        let flame = new Image();
+        smoke.src = "/arcgis-js-api-4-extra/Smoke45Frames.png";
+        smoke.onload = function () {
+          flame.src = "/arcgis-js-api-4-extra/ParticleFlamesSheet.png";
+          flame.onload = function () {
+
+          // var points = [
+          //   {"type":"point","x":-10777067.450719863,"y":3864746.7560123024},
+          //   {"type":"point","x":-10777054.313105624,"y":3864724.6609338108},
+          //   {"type":"point","x":-10777039.981162818,"y":3864700.774362468},
+          //   {"type":"point","x":-10777029.829369998,"y":3864688.831076797},
+          //   {"type":"point","x":-10777000.568320105,"y":3864666.7359983055},
+          //   {"type":"point","x":-10776977.278913045,"y":3864650.6125626494},
+          //   {"type":"point","x":-10776958.766820256,"y":3864636.8777841274},
+          //   {"type":"point","x":-10776933.088756062,"y":3864622.545841322},
+          //   {"type":"point","x":-10776916.368156122,"y":3864609.4082270837},
+          //   {"type":"point","x":-10776897.258899048,"y":3864598.6592699797}
+          // ];
+
+          var points = [];
+
+          // var points = [
+          //   {"type":"point","x":1046521.65,"y":5125932.29}
+          // ];
+
+          var fireFronts = JSON.parse(fireJSON);
+
+          for (var i = 0; i < fireFronts.length; ++i) {
+            for (var j = 0; j < fireFronts[i].length; ++j) {
+              layer.graphics.push({
+                geometry: { x: fireFronts[i][j][0], y: fireFronts[i][j][1], type: "point" },
+                attributes: {
+                  START_TIME: 10 + i * 1.0,
+                  END_TIME: 30 + i * 1.0
+                }
+              });
+            }
+          }
+
+          window.fronts = [];
+
+
+            // for (var i = 0; i < 10; ++i) {
+            //   layer.graphics.push({
+            //     geometry: {
+            //       type: "point",
+            //       x: -10777009.491984 + i * 10,
+            //       y: 3864656.150099
+            //     },
+            //     attributes: {
+            //       START_TIME: 5 + i,
+            //       END_TIME: 10 + i
+            //     }
+            //   });
+            // }
+
+            // new FeatureLayer({
+            //   url: "https://services6.arcgis.com/ubm4tcTYICKBpist/arcgis/rest/services/BCWS_FirePerimeters_PublicView/FeatureServer/0"
+            // }).load()
+            // .then((tmpLayer) => {
+            //   return tmpLayer.queryFeatures({
+            //       where: "1=1",
+            //       returnGeometry: true,
+            //       outFields: ["*"],
+            //       geometry: view.center,
+            //       outSpatialReference: SpatialReference.WebMercator,
+            //       distance: 100000
+            //     })
+            //     .then((featureSet) => {
+            //       layer.graphics.addMany(featureSet.features);
+            //     });
+            // });
+
+            // view.on("click", function (event) {
+            //   console.log(JSON.stringify({type: "point", x: event.mapPoint.x, y: event.mapPoint.y}));
+            // }.bind(this));
+
+
+
+
+            var layerList = new LayerList({
+              view: view
+            });
+
+            // Add widget to the top right corner of the view
+            view.ui.add(layerList, "bottom-right");
+
+
+            var graphicsLayer = new GraphicsLayer();
+
+            var sketch = new Sketch({
+              layer: graphicsLayer,
+              view: view
+            });
+
+            view.ui.add(sketch, "top-right");
+
+            // Listen to sketch widget's create event.
+            sketch.on("create", function(event) {
+              // check if the create event's state has changed to complete indicating
+              // the graphic create operation is completed.
+              if (event.state === "complete") {
+                console.log(event);
+                var front = [];
+                var path = event.graphic.geometry.paths[0];
+                for (const p of path) {
+                  console.log(p);
+                  front.push(p);
+                }
+                window.fronts.push(front);
+                // remove the graphic from the layer. Sketch adds
+                // the completed graphic to the layer by default.
+                //polygonGraphicsLayer.remove(event.graphic);
+
+                // use the graphic.geometry to query features that intersect it
+                //selectFeatures(event.graphic.geometry);
+              }
+            });
+          };
+        };
+
+
+
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+    <img style="pointer-events: none; position: absolute; left: 0; top: 0; opacity: 0.0; width: 1100px;" src="http://ddamico.esri.com/arcgis-js-api-4-extra/CorsicanFire.png">
+  </body>
+</html>
