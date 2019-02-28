@@ -343,51 +343,6 @@
         });
       }
 
-      // var treesButton = new Home({
-      //   view: view,
-      //   iconClass: "esri-icon-radio-checked",
-      //   // iconClass: "fas fa-camera",
-      //   viewpoint: new Viewpoint({
-      //     targetGeometry: {type: "extent", "spatialReference":{"latestWkid":3857,"wkid":102100},"xmin":-10538620.965060156,"ymin":4651025.222102316,"xmax":-10538220.566408206,"ymax":4651304.993569041}
-      //   }),
-      //   goToOverride: function(view, goToParams) {
-      //     layer.windSpeed = 100;
-      //     return view.goTo(goToParams.target, goToParams.options);
-      //   },
-      //   label: "Watch the swaying trees"
-      // });
-
-      // view.ui.add(treesButton, "top-left");
-
-      // var campsiteButton = new Home({
-      //   view: view,
-      //   iconClass: "esri-icon-radio-checked",
-      //   // iconClass: "fas fa-camera",
-      //   viewpoint: new Viewpoint({
-      //     targetGeometry: {type: "extent", "spatialReference":{"latestWkid":3857,"wkid":102100},"xmin":-10539288.079986323,"ymin":4651432.9504745575,"xmax":-10538487.282682069,"ymax":4651992.4934082525}
-      //   }),
-      //   goToOverride: function(view, goToParams) {
-      //     layer.windSpeed = 20;
-      //     return view.goTo(goToParams.target, goToParams.options);
-      //   },
-      //   label: "Go to the campsite"
-      // });
-
-      // view.ui.add(campsiteButton, "top-left");
-
-      // var photoButton = new Home({
-      //   view: view,
-      //   iconClass: "esri-icon-radio-checked",
-      //   // iconClass: "fas fa-camera",
-      //   goToOverride: function(view, goToParams) {
-      //     return new Promise(function (resolve) {
-      //       takePicture();
-      //       resolve();
-      //     });
-      //   },
-      //   label: "Take a picture"
-      // })
-
       function addButton(buttonId, onClick) {
         var btn = document.getElementById(buttonId);
         view.ui.add(btn, "top-left");
@@ -404,15 +359,15 @@
         view.goTo(campsiteExtent);
       });
 
-      addButton("takePictureBtn", function () {
-        takePicture();
-      });
-
       var timeOfTheDay = new Expand({
         expandIconClass: "fas fa-clock",
         content: document.getElementById("lighting")
       });
       view.ui.add(timeOfTheDay, "top-left");
+
+      addButton("takePictureBtn", function () {
+        takePicture();
+      });
 
       // var gui = new dat.GUI();
       // gui.add(layer, "windSpeed");
