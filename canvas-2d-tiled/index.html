@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Intro to MapView - Create a 2D map - 4.10</title>
+  <style>
+    html,
+    body,
+    #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    }
+  </style>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.10/esri/css/main.css">
+  <script src="https://js.arcgis.com/4.10/"></script>
+
+  <script>
+    require([
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/layers/Layer",
+      "esri/views/2d/layers/BaseLayerView2D",
+      "esri/layers/support/TileInfo"
+    ], function(Map, MapView, Layer, BaseLayerView2D, TileInfo) {
+
+      var TileBorderLayerView2D = BaseLayerView2D.createSubclass({
+        // Example of a render implementation that draws tile boundaries
+        render(renderParameters) {
+          var tileSize = this.layer.tileInfo.size[0];
+          var state = renderParameters.state;
+          var pixelRatio = state.pixelRatio;
+          var width = state.size[0];
+          var height = state.size[1];
+          var context = renderParameters.context;
+          var coords = [0, 0];
+    
+          context.fillStyle = "rgba(0,0,0,0.25)";
+          context.fillRect(0, 0, width * pixelRatio, height * pixelRatio);
+    
+          // apply rotation for everything that will be applied to the canvas
+          if (state.rotation !== 0) {
+            context.translate(width * pixelRatio * 0.5, height * pixelRatio * 0.5);
+            context.rotate((state.rotation * Math.PI) / 180);
+            context.translate(- width * pixelRatio * 0.5, -height * pixelRatio * 0.5);
+          }
+    
+          // Set the style for all the text.
+          context.font = "24px monospace";
+          context.fillStyle = "black";
+          context.shadowBlur = 1;
+    
+          for (const tile of this.tiles) {
+            var screenScale = tile.resolution / state.resolution * pixelRatio;
+    
+            state.toScreenNoRotation(coords, tile.coords);
+    
+            // Draw the tile boundaries
+            context.strokeRect(coords[0], coords[1], tileSize * screenScale, tileSize * screenScale);
+    
+            // Draw the tile information
+            context.shadowColor = "white";
+            context.fillText(
+              tile.level + "/" + tile.row + "/" + tile.col + "/" + tile.world,
+              coords[0] + 12,
+              coords[1] + 24,
+              tileSize * screenScale
+            );
+            context.shadowColor = "transparent";
+          }
+        }
+      });
+    
+      var CustomTileLayer = Layer.createSubclass({
+        tileInfo: TileInfo.create({ spatialReference: { wkid: 3857 }}),
+    
+        createLayerView(view) {
+          if (view.type === "2d") {
+            return new TileBorderLayerView2D({
+              view: view,
+              layer: this
+            });
+          }
+        }
+      });
+
+      var map = new Map({
+        basemap: "streets",
+        layers: [
+          new CustomTileLayer()
+        ]
+      });
+
+      var view = new MapView({
+        container: "viewDiv",
+        map: map,
+        zoom: 4,
+        center: [15, 65] // longitude, latitude
+      });
+
+    });
+  </script>
+</head>
+
+<body>
+  <div id="viewDiv"></div>
+</body>
+</html>

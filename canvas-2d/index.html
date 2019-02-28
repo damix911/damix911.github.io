@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+  <title>Intro to MapView - Create a 2D map - 4.10</title>
+  <style>
+    html,
+    body,
+    #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+    }
+  </style>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.10/esri/css/main.css">
+  <script src="https://js.arcgis.com/4.10/"></script>
+
+  <script>
+    require([
+      "esri/Map",
+      "esri/views/MapView",
+      "esri/layers/Layer",
+      "esri/views/2d/layers/BaseLayerView2D",
+      "esri/geometry/Point",
+      "esri/Graphic",
+      "esri/core/Collection"
+    ], function(Map, MapView, Layer, BaseLayerView2D, Point, Graphic, Collection) {
+
+      var CustomLayerView2D = BaseLayerView2D.createSubclass({
+        render: function (renderParameters) {
+          var ctx = renderParameters.context;
+          // ctx.scale(renderParameters.state.pixelRatio, renderParameters.state.pixelRatio);
+          // ctx.translate(renderParameters.state.size[0] / 2, renderParameters.state.size[1] / 2);
+          // ctx.rotate(Math.PI * renderParameters.state.rotation / 180);
+          // ctx.scale(1 / renderParameters.state.resolution, -1 / renderParameters.state.resolution);
+          // ctx.translate(-renderParameters.state.center[0], -renderParameters.state.center[1]);
+          
+
+          // STATIC - Screen space
+          // this.layer.features.forEach(function (feature) {
+          //   var screenPoint = view.toScreen(feature.geometry);
+          //   ctx.fillRect(screenPoint.x - 5, screenPoint.y - 5, 10, 10);
+          // });
+
+          // ANIMATED - Screen space
+          var scale = 1.0 + 0.5 * Math.cos(2.0 * Math.PI * 1.0 * performance.now() / 1000);
+
+          this.layer.features.forEach(function (feature) {
+            var screenPoint = view.toScreen(feature.geometry);
+            ctx.fillRect(screenPoint.x - 5 * scale, screenPoint.y - 5 * scale, 10 * scale, 10 * scale);
+          });
+
+          this.requestRender();
+
+
+          // STATIC
+          // this.layer.features.forEach(function (feature) {
+          //   var point = feature.geometry;
+          //   ctx.fillRect(point.x - 50000, point.y - 50000, 100000, 100000);
+          // });
+
+
+          // ANIMATED
+          // var scale = 1.0 + 0.5 * Math.cos(2.0 * Math.PI * 1.0 * performance.now() / 1000);
+
+          // this.layer.features.forEach(function (feature) {
+          //   var point = feature.geometry;
+          //   ctx.fillRect(point.x - 50000 * scale, point.y - 50000 * scale, 100000 * scale, 100000 * scale);
+          // });
+
+          // this.requestRender();
+        },
+
+        hitTest: function (x, y) {
+          var hit;
+          var view = this.view;
+          var layer = this.layer;
+          this.layer.features.forEach(function (feature) {
+            var mapPoint = feature.geometry;
+            var screenPoint = view.toScreen(mapPoint);
+            var dx = x - screenPoint.x;
+            var dy = y - screenPoint.y;
+            var d = Math.sqrt(dx * dx + dy * dy);
+            if (d < 20) {
+              hit = feature;
+              hit.sourceLayer = layer;
+            }
+          });
+          return hit;
+        }
+      });
+    
+      var CustomLayer = Layer.createSubclass({
+        properties: {
+          features: Collection.ofType(Graphic)
+        },
+
+        constructor: function () {
+          this.features = Collection.ofType(Graphic)();
+        },
+
+        createLayerView: function (view) {
+          if (view.type === "2d") {
+            return new CustomLayerView2D({
+              view: view,
+              layer: this
+            });
+          }
+        }
+      });
+
+      var customLayer = new CustomLayer({
+        popupTemplate: {
+          title: "{NAME}"
+        }
+      });
+      customLayer.features.add({
+        attributes: {
+          NAME: "London"
+        },
+        geometry: {
+          type: "point",
+          x: 14676,
+          y: 6712394,
+          spatialReference: {
+            wkid: 3857
+          }
+        }
+      });
+      customLayer.features.add({
+        attributes: {
+          NAME: "Paris"
+        },
+        geometry: {
+          type: "point",
+          x: 261720,
+          y: 6255606,
+          spatialReference: {
+            wkid: 3857
+          }
+        }
+      });
+      customLayer.features.add({
+        attributes: {
+          NAME: "Milan"
+        },
+        geometry: {
+          type: "point",
+          x: 1023033,
+          y: 5694559,
+          spatialReference: {
+            wkid: 3857
+          }
+        }
+      });
+      customLayer.features.add({
+        attributes: {
+          NAME: "Vienna"
+        },
+        geometry: {
+          type: "point",
+          x: 1822565,
+          y: 6141104,
+          spatialReference: {
+            wkid: 3857
+          }
+        }
+      });
+
+      var map = new Map({
+        basemap: "streets",
+        layers: [
+          customLayer
+        ]
+      });
+
+      var view = new MapView({
+        container: "viewDiv",
+        map: map,
+        zoom: 4,
+        center: [15, 65]
+      });
+
+    });
+  </script>
+</head>
+
+<body>
+  <div id="viewDiv"></div>
+</body>
+</html>

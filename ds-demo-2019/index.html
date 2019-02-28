@@ -15,6 +15,7 @@
     }
   </style>
 
+  <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.0/css/all.css" integrity="sha384-lZN37f5QGtY3VHgisS14W3ExzMWZxybE1SJSEsQp9S+oqd12jhcu+A56Ebc1zFSJ" crossorigin="anonymous">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.5/dat.gui.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix.js"></script>
 
@@ -122,16 +123,42 @@
     }
 
     #lighting {
-      position: absolute;
-      left: 10em;
-      top: 0;
+      margin: 0;
+      padding: 0;
+      border-bottom: 1px solid #c0c0c0;
     }
 
     #lighting button {
-      border: 1px solid #c0c0c0;
+      position: relative;
+      width: 10em;
+      border-top: 1px solid #c0c0c0;
+      border-bottom: none;
+      border-left: 1px solid #c0c0c0;
+      border-right: 1px solid #c0c0c0;
       padding: 1em;
       color: #c0c0c0;
-      background-color: #1a1a1a;
+      background-color: #333333;
+    }
+
+    #lighting button i {
+      float: left;
+    }
+
+    #lighting button:after {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      background-color: #c0c0c0;
+      opacity: 0;
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #lighting button:active:after {
+      opacity: 1;
+      transition: 0.2s
     }
   </style>
 
@@ -141,6 +168,9 @@
       "esri/layers/Layer",
       "esri/views/MapView",
       "esri/views/2d/layers/BaseLayerViewGL2D",
+      "esri/geometry/Extent",
+      "esri/widgets/Expand",
+      "esri/Viewpoint",
       "./bundles/app.js",
       "dojo/domReady!"
     ], function(
@@ -148,6 +178,9 @@
       Layer,
       MapView,
       BaseLayerViewGL2D,
+      Extent,
+      Expand,
+      Viewpoint,
       engine
     ) {
       var CustomLayerView2D = BaseLayerViewGL2D.createSubclass({
@@ -230,8 +263,6 @@
       function setupLightingHandler(btnId, params) {
         var btn = document.getElementById(btnId);
         btn.addEventListener("click", function () {
-          layer.windAngle = params.windAngle;
-          layer.windSpeed = params.windSpeed;
           layer.sunElevation = params.sunElevation;
           layer.sunAzimuth = params.sunAzimuth;
           layer.sunColor = params.sunColor;
@@ -251,7 +282,7 @@
           -94.673,
            38.51
         ],
-        zoom: 17
+        zoom: 12
       });
 
       window.points = [];
@@ -266,48 +297,24 @@
       var screen = document.getElementById("screen");
       var photo = document.getElementById("photo");
       setupLightingHandler("btnDawn", {
-        windAngle: 20,
-        windSpeed: 50,
         sunElevation: 35,
         sunAzimuth: 0,
         sunColor: "#c0c0c0",
         skyColor: "#ebfdff"
       });
-      setupLightingHandler("btnMorningFair", {
-        windAngle: 20,
-        windSpeed: 100,
-        sunElevation: 40,
-        sunAzimuth: -30,
-        sunColor: "#f0f0ca",
-        skyColor: "#ebfdff"
-      });
-      setupLightingHandler("btnMorningOvercast", {
-        windAngle: 20,
-        windSpeed: 100,
-        sunElevation: 40,
-        sunAzimuth: -30,
-        sunColor: "#606060",
-        skyColor: "#d0d0d0"
-      });
       setupLightingHandler("btnNoon", {
-        windAngle: 50,
-        windSpeed: 150,
         sunElevation: 50,
         sunAzimuth: 0,
         sunColor: "#f0f0f0",
         skyColor: "#ebfdff"
       });
-      setupLightingHandler("btnSunset", {
-        windAngle: 80,
-        windSpeed: 100,
+      setupLightingHandler("btnEvening", {
         sunElevation: 45,
         sunAzimuth: 0,
         sunColor: "#ff8000",
         skyColor: "#ffa000"
       });
       setupLightingHandler("btnNight", {
-        windAngle: -20,
-        windSpeed: 200,
         sunElevation: 40,
         sunAzimuth: 0,
         sunColor: "#808080",
@@ -336,14 +343,85 @@
         });
       }
 
-      var gui = new dat.GUI();
-      gui.add(layer, "windSpeed");
-      gui.add(layer, "windAngle");
-      gui.add(layer, "sunElevation");
-      gui.add(layer, "sunAzimuth");
-      gui.addColor(layer, "sunColor");
-      gui.addColor(layer, "skyColor");
-      gui.add({ takePicture: takePicture }, "takePicture");
+      // var treesButton = new Home({
+      //   view: view,
+      //   iconClass: "esri-icon-radio-checked",
+      //   // iconClass: "fas fa-camera",
+      //   viewpoint: new Viewpoint({
+      //     targetGeometry: {type: "extent", "spatialReference":{"latestWkid":3857,"wkid":102100},"xmin":-10538620.965060156,"ymin":4651025.222102316,"xmax":-10538220.566408206,"ymax":4651304.993569041}
+      //   }),
+      //   goToOverride: function(view, goToParams) {
+      //     layer.windSpeed = 100;
+      //     return view.goTo(goToParams.target, goToParams.options);
+      //   },
+      //   label: "Watch the swaying trees"
+      // });
+
+      // view.ui.add(treesButton, "top-left");
+
+      // var campsiteButton = new Home({
+      //   view: view,
+      //   iconClass: "esri-icon-radio-checked",
+      //   // iconClass: "fas fa-camera",
+      //   viewpoint: new Viewpoint({
+      //     targetGeometry: {type: "extent", "spatialReference":{"latestWkid":3857,"wkid":102100},"xmin":-10539288.079986323,"ymin":4651432.9504745575,"xmax":-10538487.282682069,"ymax":4651992.4934082525}
+      //   }),
+      //   goToOverride: function(view, goToParams) {
+      //     layer.windSpeed = 20;
+      //     return view.goTo(goToParams.target, goToParams.options);
+      //   },
+      //   label: "Go to the campsite"
+      // });
+
+      // view.ui.add(campsiteButton, "top-left");
+
+      // var photoButton = new Home({
+      //   view: view,
+      //   iconClass: "esri-icon-radio-checked",
+      //   // iconClass: "fas fa-camera",
+      //   goToOverride: function(view, goToParams) {
+      //     return new Promise(function (resolve) {
+      //       takePicture();
+      //       resolve();
+      //     });
+      //   },
+      //   label: "Take a picture"
+      // })
+
+      function addButton(buttonId, onClick) {
+        var btn = document.getElementById(buttonId);
+        view.ui.add(btn, "top-left");
+        btn.addEventListener("click", onClick);
+      }
+
+      var treesExtent = Extent.fromJSON({"spatialReference":{"latestWkid":3857,"wkid":102100},"xmin":-10538620.965060156,"ymin":4651025.222102316,"xmax":-10538220.566408206,"ymax":4651304.993569041});
+      addButton("goToTreesBtn", function () {
+        view.goTo(treesExtent);
+      });
+      
+      var campsiteExtent = Extent.fromJSON({"spatialReference":{"latestWkid":3857,"wkid":102100},"xmin":-10539288.079986323,"ymin":4651432.9504745575,"xmax":-10538487.282682069,"ymax":4651992.4934082525});
+      addButton("goToCampsiteBtn", function () {
+        view.goTo(campsiteExtent);
+      });
+
+      addButton("takePictureBtn", function () {
+        takePicture();
+      });
+
+      var timeOfTheDay = new Expand({
+        expandIconClass: "fas fa-clock",
+        content: document.getElementById("lighting")
+      });
+      view.ui.add(timeOfTheDay, "top-left");
+
+      // var gui = new dat.GUI();
+      // gui.add(layer, "windSpeed");
+      // gui.add(layer, "windAngle");
+      // gui.add(layer, "sunElevation");
+      // gui.add(layer, "sunAzimuth");
+      // gui.addColor(layer, "sunColor");
+      // gui.addColor(layer, "skyColor");
+      // gui.add({ takePicture: takePicture }, "takePicture");
     });
   </script>
 </head>
@@ -354,12 +432,13 @@
   <div id="flash"></div>
   <img id="photo">
   <div id="lighting">
-    <button id="btnDawn">Dawn</button>
-    <button id="btnMorningFair">Morning (Fair)</button>
-    <button id="btnMorningOvercast">Morning (Overcast)</button>
-    <button id="btnNoon">Noon</button>
-    <button id="btnSunset">Sunset</button>
-    <button id="btnNight">Night</button>
+    <button id="btnDawn"><i class="fas fa-coffee"></i>Dawn</button>
+    <button id="btnNoon"><i class="fas fa-utensils"></i>Noon</button>
+    <button id="btnEvening"><i class="fas fa-glass-martini"></i>Evening</button>
+    <button id="btnNight"><i class="fas fa-bed"></i>Night</button>
   </div>
+  <button class="fas fa-tree esri-widget--button" style="border: 0;" id="goToTreesBtn" type="button" title="Watch the swaying trees"></button>
+  <button class="fas fa-campground esri-widget--button" style="border: 0;" id="goToCampsiteBtn" type="button" title="Go to the campsite"></button>
+  <button class="fas fa-camera esri-widget--button" style="border: 0;" id="takePictureBtn" type="button" title="Take a picture"></button>
 </body>
 </html>
