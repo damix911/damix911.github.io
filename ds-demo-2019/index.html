@@ -242,9 +242,9 @@
         constructor() {
           this.windAngle = 20;
           this.windSpeed = 100;
-          this.sunElevation = 40;
+          this.sunElevation = 35;
           this.sunAzimuth = 0;
-          this.sunColor = "#ffffca";
+          this.sunColor = "#c0c0c0";
           this.skyColor = "#ebfdff";
         },
 
@@ -351,11 +351,13 @@
 
       var treesExtent = Extent.fromJSON({"spatialReference":{"latestWkid":3857,"wkid":102100},"xmin":-10538620.965060156,"ymin":4651025.222102316,"xmax":-10538220.566408206,"ymax":4651304.993569041});
       addButton("goToTreesBtn", function () {
+        layer.windSpeed = 100;
         view.goTo(treesExtent);
       });
       
       var campsiteExtent = Extent.fromJSON({"spatialReference":{"latestWkid":3857,"wkid":102100},"xmin":-10539288.079986323,"ymin":4651432.9504745575,"xmax":-10538487.282682069,"ymax":4651992.4934082525});
       addButton("goToCampsiteBtn", function () {
+        layer.windSpeed = 20;
         view.goTo(campsiteExtent);
       });
 
