@@ -1,0 +1,76 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>deck.gl layers in MapView</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/4.12/esri/themes/light/main.css"/>
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+    
+    <!-- Load the ArcGIS Javascript API -->
+    <script src="https://js.arcgis.com/4.12/"></script>
+
+    <!-- Load esri-deck.js AFTER loading the ArcGIS Javascript API -->
+    <script src="../lib/esri-deck.js"></script>
+
+    <script>
+      require([
+          "esri/Map",
+          "esri/views/MapView",
+        ], function(
+          Map,
+          MapView
+        ) {
+          var map = new Map({
+            basemap: "streets"
+          });
+
+          var view = new MapView({
+            container: "viewDiv",
+            map: map,
+            center: [-117.1825, 34.0556],
+            zoom: 14
+          });
+          
+          esriDeck.ready.then(() => {
+            const layer = new esriDeck.EsriDeckLayer({
+              getDeckLayer() {
+                return new esriDeck.layers.ScatterplotLayer({
+                  id: 'scatterplot-layer',
+                  data: [{ city: "Redlands", coordinates: [-117.1825, 34.0556] }],
+                  stroked: true,
+                  lineWidthMinPixels: 1,
+                  lineWidthMaxPixels: 1,
+                  radiusMinPixels: 10,
+                  radiusMaxPixels: 30,
+                  getPosition: d => d.coordinates,
+                  getRadius: d => Math.sqrt(d.exits),
+                  getFillColor: d => [255, 140, 0],
+                  getLineColor: d => [0, 0, 0]
+                });
+              }
+            });
+
+            map.layers.add(layer);
+          });
+        }
+      );
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+  </body>
+</html>

@@ -29,66 +29,66 @@
         ], function(
           Map,
           MapView
-        ) {
-          fetch("./trips.json").then(function (response) { return response.json(); }).then(function (tripsJson) {
+        ) {          
+          var map = new Map({
+            // basemap: "streets",
+            basemap: "streets-night-vector"
+          });
+          
+          var view = new MapView({
+            container: "viewDiv",
+            map: map,
+            center: [-74.0060, 40.7128],
+            zoom: 14
+          });
+          
+          // Load the data and wait for esriDeck to be ready. In the future
+          // we would like for esriDeck to become an AMD module and be ready
+          // immediately.
+          Promise.all([
+            fetch("./trips.json").then(response => response.json()),
+            esriDeck.ready
+          ]).then((results) => {
+            // Prepare data for the deck.gl layer
+            const start = performance.now();
+
             var data = [];
-            
-            for (var i = 0; i < tripsJson.length; ++i) {
-              var trip = tripsJson[i];
+
+            for (var i = 0; i < results[0].length; ++i) {
+              var trip = results[0][i];
               data.push({
                 vendor: trip.vendor,
                 waypoints: trip.segments.map(function (s, i) {
-                  return { coordinates: [s[0], s[1]], timestamp: 1554772579000 + i * 1000 };
+                  return { coordinates: [s[0], s[1]], timestamp: i * 1000 };
                 })
               });
             }
 
-            const start = performance.now();
-
             const tripsLayerData = {
-              data: data || [
-                {
-                  waypoints: [
-                    { coordinates: [-74.50, 40], timestamp: 1554772579000 },
-                    { coordinates: [-68, 40], timestamp: 1554772579000 + 10000 },
-                    { coordinates: [-68, 36], timestamp: 1554772579000 + 20000 }
-                  ],
-                }
-              ],
+              data,
               getPath: d => d.waypoints.map(p => p.coordinates),
-              getTimestamps: d => d.waypoints.map(p => p.timestamp - 1554772579000),
+              getTimestamps: d => d.waypoints.map(p => p.timestamp),
               getColor: d => d.vendor === 0 ? [255, 255, 0] : [0, 255, 0],
               opacity: 1,
               widthMinPixels: 2,
               rounded: false,
-              trailLength: 20000,
-              currentTime: 20000
+              trailLength: 2000,
+              currentTime: 0
             };
-            
-            function getDeckLayer() {
-              return new esriDeck.layers.TripsLayer({...tripsLayerData, id: "Trips Layer #1", currentTime: performance.now() - start});
-            }
 
-            esriDeck.createLayer(getDeckLayer)
-            .then(function (layer) {
-              var map = new Map({
-                // basemap: "streets-night-vector",
-                basemap: "streets-vector",
-                // basemap: "streets",
-                layers: [layer]
-              });
-
-              var view = new MapView({
-                container: "viewDiv",
-                map: map,
-                center: [-74.0060, 40.7128],
-                zoom: 14
-              });
-
-              setTimeout(() => {
-                console.log("layer.deck", layer.deck);
-              }, 5000);
+            // Convert to an Esri layer
+            const layer = new esriDeck.EsriDeckLayer({
+              getDeckLayer() {
+                return new esriDeck.layers.TripsLayer({...tripsLayerData, id: "Trips Layer", currentTime: performance.now() - start});
+              }
             });
+
+            // Add layer to the map
+            map.layers.add(layer);
+
+            setInterval(() => {
+              layer.redraw();
+            }, 50);
           });
         }
       )
