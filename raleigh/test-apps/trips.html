@@ -25,47 +25,104 @@
     <script>
       require([
           "esri/Map",
-          "esri/views/MapView"
+          "esri/views/MapView",
+          "esri/geometry/support/webMercatorUtils",
+          "esri/symbols/SimpleMarkerSymbol",
+          "esri/Graphic"
         ], function(
           Map,
-          MapView
-        ) {          
+          MapView,
+          webMercatorUtils,
+          SimpleMarkerSymbol,
+          Graphic
+        ) {
+          var configurations = {
+            "#uber": {
+              basemap: "streets-night-vector",
+              center: [-74.0060, 40.7128],
+              zoom: 14,
+              data: "./trips.json",
+              getFeatures(dataset) {
+                var data = [];
+                
+                for (var i = 0; i < dataset.length; ++i) {
+                  var trip = dataset[i];
+                  data.push({
+                    vendor: trip.vendor,
+                    waypoints: trip.segments.map(function (s, i) {
+                      return { coordinates: [s[0], s[1]], timestamp: i * 1000 };
+                    })
+                  });
+                }
+
+                return data;
+              }
+            },
+            "#lime": {
+              basemap: "streets-night-vector",
+              center: [-78.6628949825737, 35.79226756975966],
+              zoom: 12,
+              data: "./raleigh-lime-trips.json",
+              getFeatures(dataset) {
+                var data = [];
+
+                for (var i = 0; i < dataset.features.length; ++i) {
+                  var trip = dataset.features[i];
+                  
+                  for (var path of trip.geometry.paths) {
+                    data.push({
+                      vendor: 1,
+                      waypoints: path.map(function (s, i) {
+                        var lngLat = webMercatorUtils.xyToLngLat(s[0], s[1]);
+                        
+                        // var g = new Graphic({
+                        //   symbol: sms,
+                        //   geometry: {
+                        //     type: "point",
+                        //     x: lngLat[0],
+                        //     y: lngLat[1]
+                        //   }
+                        // });
+
+                        // view.graphics.add(g);
+                        return { coordinates: lngLat, timestamp: i * 1000 };
+                      })
+                    });
+                  }
+                }
+
+                return data;
+              }
+            }
+          };
+
+          var configuration = configurations[location.hash || "#lime"];
+
           var map = new Map({
-            // basemap: "streets",
-            basemap: "streets-night-vector"
+            basemap: configuration.basemap
           });
           
           var view = new MapView({
             container: "viewDiv",
             map: map,
-            center: [-74.0060, 40.7128],
-            zoom: 14
+            center: configuration.center,
+            zoom: configuration.zoom,
           });
           
           // Load the data and wait for esriDeck to be ready. In the future
           // we would like for esriDeck to become an AMD module and be ready
           // immediately.
           Promise.all([
-            fetch("./trips.json").then(response => response.json()),
+            fetch(configuration.data).then(response => response.json()),
             esriDeck.ready
           ]).then((results) => {
             // Prepare data for the deck.gl layer
-            const start = performance.now();
+            var start = performance.now();
 
-            var data = [];
+            var features = configuration.getFeatures(results[0]);
 
-            for (var i = 0; i < results[0].length; ++i) {
-              var trip = results[0][i];
-              data.push({
-                vendor: trip.vendor,
-                waypoints: trip.segments.map(function (s, i) {
-                  return { coordinates: [s[0], s[1]], timestamp: i * 1000 };
-                })
-              });
-            }
-
-            const tripsLayerData = {
-              data,
+            var tripsLayerData = {
+              data: features,
               getPath: d => d.waypoints.map(p => p.coordinates),
               getTimestamps: d => d.waypoints.map(p => p.timestamp),
               getColor: d => d.vendor === 0 ? [255, 255, 0] : [0, 255, 0],
@@ -77,7 +134,7 @@
             };
 
             // Convert to an Esri layer
-            const layer = new esriDeck.EsriDeckLayer({
+            var layer = new esriDeck.EsriDeckLayer({
               getDeckLayer() {
                 return new esriDeck.layers.TripsLayer({...tripsLayerData, id: "Trips Layer", currentTime: performance.now() - start});
               }
