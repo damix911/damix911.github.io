@@ -542,35 +542,78 @@ gl_FragColor = map(v);
         //   }
         // ];
 
+        var configurations = {
+          "#uber": {
+            basemap: "streets-night-vector",
+            center: [-74.0060, 40.7128],
+            zoom: 14,
+            data: "./trips.json",
+            getFeatures(dataset) {
+              return dataset.map(trip => {
+                var path = trip.segments.map(segment => [segment[0], segment[1]]);
+
+                return {
+                  attributes: {
+                    "vendor": trip.vendor
+                  },
+                  geometry: webMercatorUtils.geographicToWebMercator({
+                    paths: [path],
+                    type: "polyline",
+                    spatialReference: {
+                      wkid: 4326
+                    }
+                  })
+                };
+              });
+            }
+          },
+          "#lime": {
+            basemap: "streets-night-vector",
+            center: [-78.6628949825737, 35.79226756975966],
+            zoom: 12,
+            data: "./raleigh-lime-trips.json",
+            getFeatures(dataset) {
+              var data = [];
+
+              for (var i = 0; i < dataset.features.length; ++i) {
+                var trip = dataset.features[i];
+                
+                for (var path of trip.geometry.paths) {
+                  data.push({
+                    attributes: {
+                      "vendor": 1
+                    },
+                    geometry: {
+                      paths: [path],
+                      type: "polyline",
+                      spatialReference: {
+                        wkid: 4326
+                      }
+                    }
+                  });
+                }
+              }
+
+              return data;
+            }
+          }
+        };
+
+        var configuration = configurations[location.hash || "#lime"];
+
         var map = new Map({
-          basemap: "streets-night-vector"
+          basemap: configuration.basemap
         });
 
         var view = new MapView({
           container: "viewDiv",
           map: map,
-          center: [-74.0060, 40.7128],
-          // center: [-78.6382, 35.7796],
-          zoom: 14
+          center: configuration.center,
+          zoom: configuration.zoom,
         });
 
-        fetch("./trips.json").then(function (response) { return response.json(); }).then(function (tripsJson) {
-          var graphics = tripsJson.map(trip => {
-            var path =  trip.segments.map(segment => [segment[0], segment[1]]);
-
-            return {
-              attributes: {
-                "vendor": trip.vendor
-              },
-              geometry: webMercatorUtils.geographicToWebMercator({
-                paths: [path],
-                type: "polyline",
-                spatialReference: {
-                  wkid: 4326
-                }
-              })
-            };
-          });
+        fetch(configuration.data).then(function (response) { return response.json(); }).then(function (tripsJson) {
+          var graphics = configuration.getFeatures(tripsJson);
 
           var layer = new CustomLayer({
             graphics: graphics
