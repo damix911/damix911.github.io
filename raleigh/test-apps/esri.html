@@ -90,93 +90,7 @@
           attach: function() {
             var gl = this.context;
 
-            // Define and compile shaders.
-            var vertexSource = `
-precision highp float;
-
-uniform mat3 u_transform;
-uniform mat3 u_display;
-
-attribute vec2 a_position;
-attribute vec2 a_offset;
-attribute float a_distance;
-attribute float a_side;
-attribute float a_color;
-
-varying float v_distance;
-varying float v_side;
-varying vec3 v_color;
-
-const float SIZE = 100.0;
-
-void main() {
-gl_Position.xy = (u_display * (u_transform * (vec3(a_position, 1.0) + vec3(a_offset * SIZE, 0.0)))).xy;
-gl_Position.zw = vec2(0.0, 1.0);
-v_distance = a_distance;
-v_side = a_side;
-v_color = mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), a_color);
-}
-`;
-            var fragmentSource = `
-precision highp float;
-
-uniform float u_current_time;
-
-varying float v_distance;
-varying float v_side;
-varying vec3 v_color;
-
-const float PARTICLE_LENGTH = 100.0;
-
-float rand(vec2 co) {
-return fract(sin(dot(co.xy ,vec2(12.9898, 78.233))) * 43758.5453);
-}
-
-float y(float s) {
-return 0.5 + 0.3 * sin(s);
-}
-
-float intensity(vec2 uv, float random) {
-vec2 point = vec2(0.8, y(u_current_time + PARTICLE_LENGTH * random));
-
-float delay = point.x - uv.x;
-float yTrail = y(u_current_time + PARTICLE_LENGTH * random - delay);
-
-float spotIntensity = pow(1.0 - length(point - uv), 30.0);
-float trailIntesity;
-
-if (uv.x > 0.8) {
-  trailIntesity = 0.0;
-} else {
-  trailIntesity = pow(1.0 - abs(yTrail - uv.y), 30.0) * exp(-4.0 * (1.0 - uv.x));
-}
-
-return spotIntensity + 0.0 * trailIntesity;
-}
-
-vec4 map(float intensity) {
-return vec4(v_color * intensity, intensity);
-}
-
-vec4 shade(vec2 uv, float random) {
-float i = intensity(uv, random);
-vec4 color = map(i);
-
-return color;
-}
-
-float value(float d) {
-float seed = floor((v_distance + d) / PARTICLE_LENGTH - u_current_time);
-vec2 uv = vec2(fract((v_distance + d) / PARTICLE_LENGTH - u_current_time), 1.0 - v_side);
-float i = intensity(uv, rand(vec2(seed, 4234.239432)));
-return i;
-}
-
-void main() {
-float v = value(0.0);
-gl_FragColor = map(v);
-}
-`;
+            var { vertexSource, fragmentSource } = this.getShaderSource();
 
             var vertexShader = gl.createShader(gl.VERTEX_SHADER);
             gl.shaderSource(vertexShader, vertexSource);
@@ -195,6 +109,9 @@ gl_FragColor = map(v);
             // Bind attributes.
             gl.bindAttribLocation(this.program, this.aPosition, "a_position");
             gl.bindAttribLocation(this.program, this.aOffset, "a_offset");
+            gl.bindAttribLocation(this.program, this.aDistance, "a_distance");
+            gl.bindAttribLocation(this.program, this.aSide, "a_side");
+            gl.bindAttribLocation(this.program, this.aColor, "a_color");
 
             // Link.
             gl.linkProgram(this.program);
@@ -244,6 +161,144 @@ gl_FragColor = map(v);
             gl.deleteBuffer(this.vertexBuffer);
             gl.deleteBuffer(this.indexBuffer);
             gl.deleteProgram(this.program);
+          },
+
+          getShaderSource: function () {
+            const shaders = {
+              dots: {
+                vertex: `
+                  precision highp float;
+
+                  uniform mat3 u_transform;
+                  uniform mat3 u_display;
+
+                  attribute vec2 a_position;
+                  attribute vec2 a_offset;
+                  attribute float a_distance;
+                  attribute float a_side;
+                  attribute float a_color;
+
+                  varying float v_distance;
+                  varying float v_side;
+                  varying vec3 v_color;
+
+                  const float SIZE = 100.0;
+
+                  void main() {
+                  gl_Position.xy = (u_display * (u_transform * (vec3(a_position, 1.0) + vec3(a_offset * SIZE, 0.0)))).xy;
+                  gl_Position.zw = vec2(0.0, 1.0);
+                  v_distance = a_distance;
+                  v_side = a_side;
+                  v_color = mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), a_color);
+                  }`,
+                fragment: `
+                  precision highp float;
+
+                  uniform float u_current_time;
+
+                  varying float v_distance;
+                  varying float v_side;
+                  varying vec3 v_color;
+
+                  const float PARTICLE_LENGTH = 100.0;
+
+                  float rand(vec2 co) {
+                  return fract(sin(dot(co.xy ,vec2(12.9898, 78.233))) * 43758.5453);
+                  }
+
+                  float y(float s) {
+                  return 0.5 + 0.3 * sin(s);
+                  }
+
+                  float intensity(vec2 uv, float random) {
+                  vec2 point = vec2(0.8, y(u_current_time + PARTICLE_LENGTH * random));
+
+                  float delay = point.x - uv.x;
+                  float yTrail = y(u_current_time + PARTICLE_LENGTH * random - delay);
+
+                  float spotIntensity = pow(1.0 - length(point - uv), 30.0);
+                  float trailIntesity;
+
+                  if (uv.x > 0.8) {
+                    trailIntesity = 0.0;
+                  } else {
+                    trailIntesity = pow(1.0 - abs(yTrail - uv.y), 30.0) * exp(-4.0 * (1.0 - uv.x));
+                  }
+
+                  return spotIntensity + 0.0 * trailIntesity;
+                  }
+
+                  vec4 map(float intensity) {
+                  return vec4(v_color * intensity, intensity);
+                  }
+
+                  vec4 shade(vec2 uv, float random) {
+                  float i = intensity(uv, random);
+                  vec4 color = map(i);
+
+                  return color;
+                  }
+
+                  float value(float d) {
+                  float seed = floor((v_distance + d) / PARTICLE_LENGTH - u_current_time);
+                  vec2 uv = vec2(fract((v_distance + d) / PARTICLE_LENGTH - u_current_time), 1.0 - v_side);
+                  float i = intensity(uv, rand(vec2(seed, 4234.239432)));
+                  return i;
+                  }
+
+                  void main() {
+                  float v = value(0.0);
+                  gl_FragColor = map(v);
+                  }`
+              },
+              lines: {
+                vertex: `
+                  precision highp float;
+
+                  uniform mat3 u_transform;
+                  uniform mat3 u_display;
+
+                  attribute vec2 a_position;
+                  attribute vec2 a_offset;
+                  attribute float a_distance;
+                  attribute float a_side;
+                  attribute float a_color;
+
+                  varying float v_distance;
+                  varying float v_side;
+                  varying vec3 v_color;
+
+                  const float SIZE = 50.0;
+
+                  void main() {
+                  gl_Position.xy = (u_display * (u_transform * (vec3(a_position, 1.0) + vec3(a_offset * SIZE, 0.0)))).xy;
+                  gl_Position.zw = vec2(0.0, 1.0);
+                  v_distance = a_distance;
+                  v_side = a_side;
+                  v_color = mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), a_color);
+                  }`,
+                fragment: `
+                  precision highp float;
+
+                  uniform float u_current_time;
+
+                  varying float v_distance;
+                  varying float v_side;
+                  varying vec3 v_color;
+
+                  void main() {
+                    float d = v_distance - u_current_time * 100.0;
+                    float a1 = d < 500.0 ? mix(0.0, 1.0, d / 500.0) : 0.0;
+                    float a2 = exp(-abs(v_side) * 10.0);
+                    float a = a1 * a2;
+                    gl_FragColor = vec4(v_color * a, a);
+                  }`
+              }
+            };
+
+            const { vertex, fragment } = shaders[this.layer.shading];
+
+            return { vertexSource: vertex, fragmentSource: fragment };
           },
 
           // Called every time a frame is rendered.
@@ -321,49 +376,6 @@ gl_FragColor = map(v);
             this.requestRender();
           },
 
-          // Called by the map view or the popup view when hit testing is required.
-          hitTest: function(x, y) {
-            // The map view.
-            var view = this.view;
-
-            if (this.layer.graphics.length === 0) {
-              // Nothing to do.
-              return promiseUtils.resolve(null);
-            }
-
-            // Compute screen distance between each graphic and the test point.
-            var distances = this.layer.graphics.map(function(graphic) {
-              var graphicPoint = view.toScreen(graphic.geometry);
-              return Math.sqrt(
-                (graphicPoint.x - x) * (graphicPoint.x - x) +
-                  (graphicPoint.y - y) * (graphicPoint.y - y)
-              );
-            });
-
-            // Find the minimum distance.
-            var minIndex = 0;
-
-            distances.forEach(function(distance, i) {
-              if (distance < distances.getItemAt(minIndex)) {
-                minIndex = i;
-              }
-            });
-
-            var minDistance = distances.getItemAt(minIndex);
-
-            // If the minimum distance is more than 35 pixel then nothing was hit.
-            if (minDistance > 35) {
-              return promiseUtils.resolve(null);
-            }
-
-            // Otherwise it is a hit; We set the layer as the source layer for the graphic
-            // (required for the popup view to work) and we return a resolving promise to
-            // the graphic.
-            var graphic = this.layer.graphics.getItemAt(minIndex);
-            graphic.sourceLayer = this.layer;
-            return promiseUtils.resolve(graphic);
-          },
-
           // Called internally from render().
           updatePositions: function(renderParameters) {
             var gl = renderParameters.context;
@@ -422,69 +434,110 @@ gl_FragColor = map(v);
             let idxCursor = 0;
 
             var normal = vec2.create();
-            var prevDistance = 0;
+            var prevNormal = vec2.create();
+            var nextNormal = vec2.create();
           
             for (var i = 0; i < graphics.items.length; ++i) {
               var graphic = graphics.items[i];
               var path = graphic.geometry.paths[0];
-
               var c = graphic.attributes["vendor"];
+              var positions = [];
+              var normals = [];
+              var distance = 0;
+              var nextDistance = 0;
+              var distances = [];
 
-              for (let j = 0; j < path.length - 1; ++j) {
-                var from = {
+              for (let j = 0; j < path.length; ++j) {
+                distance = nextDistance;
+
+                var curr = {
                   x: path[j][0],
                   y: path[j][1]
                 };
 
-                var to = {
-                  x: path[j + 1][0],
-                  y: path[j + 1][1]
-                };
+                var xCurr = curr.x - this.centerAtLastUpdate[0];
+                var yCurr = curr.y - this.centerAtLastUpdate[1];
 
-                // The (x, y) position is relative to the encoded center.
-                var xFrom = from.x - this.centerAtLastUpdate[0];
-                var yFrom = from.y - this.centerAtLastUpdate[1];
-                var xTo = to.x - this.centerAtLastUpdate[0];
-                var yTo = to.y - this.centerAtLastUpdate[1];
+                if (j > 0) {
+                  prevNormal[0] = nextNormal[0];
+                  prevNormal[1] = nextNormal[1];
+                }
 
-                normal[0] = -(yTo - yFrom);
-                normal[1] = xTo - xFrom;
-                var length = vec2.length(normal);
-                var nextDistance = prevDistance + length;
+                if (j === path.length - 1) {
+                  nextNormal[0] = prevNormal[0];
+                  nextNormal[1] = prevNormal[1];
+                } else {
+                  var next = (j < path.length - 1) ? {
+                    x: path[j + 1][0],
+                    y: path[j + 1][1]
+                  } : null;
+
+                  var xNext = next.x - this.centerAtLastUpdate[0];
+                  var yNext = next.y - this.centerAtLastUpdate[1];
+                  
+                  nextNormal[0] = -(yNext - yCurr);
+                  nextNormal[1] = xNext - xCurr;
+                  nextDistance += vec2.length(nextNormal);
+                  vec2.normalize(nextNormal, nextNormal);
+                }
+
+                if (j === 0) {
+                  prevNormal[0] = nextNormal[0];
+                  prevNormal[1] = nextNormal[1];
+                }
+                
+                normal[0] = prevNormal[0] + nextNormal[0];
+                normal[1] = prevNormal[1] + nextNormal[1];
                 vec2.normalize(normal, normal);
 
+                positions.push([xCurr, yCurr]);
+                normals.push([normal[0], normal[1]]);
+                distances.push(distance);
+              }
+
+              for (let j = 0; j < path.length - 1; ++j) {
+                const xFrom = positions[j][0];
+                const yFrom = positions[j][1];
+                const normalFrom = normals[j];
+                const distanceFrom = distances[j];
+
+                const xTo = positions[j + 1][0];
+                const yTo = positions[j + 1][1];
+                const normalTo = normals[j + 1];
+                const distanceTo = distances[j + 1];
+                
                 vertexData[vtxCursor + 0] = xFrom;
                 vertexData[vtxCursor + 1] = yFrom;
-                vertexData[vtxCursor + 2] = normal[0];
-                vertexData[vtxCursor + 3] = normal[1];
-                vertexData[vtxCursor + 4] = prevDistance;
+                vertexData[vtxCursor + 2] = normalFrom[0];
+                vertexData[vtxCursor + 3] = normalFrom[1];
+                vertexData[vtxCursor + 4] = distanceFrom;
                 vertexData[vtxCursor + 5] = -1;
                 vertexData[vtxCursor + 6] = c;
                 vertexData[vtxCursor + 7] = 0;
 
                 vertexData[vtxCursor + 8] = xTo;
                 vertexData[vtxCursor + 9] = yTo;
-                vertexData[vtxCursor + 10] = normal[0];
-                vertexData[vtxCursor + 11] = normal[1];
-                vertexData[vtxCursor + 12] = nextDistance;
+                vertexData[vtxCursor + 10] = normalTo[0];
+                vertexData[vtxCursor + 11] = normalTo[1];
+                vertexData[vtxCursor + 12] = distanceTo;
                 vertexData[vtxCursor + 13] = -1;
                 vertexData[vtxCursor + 14] = c;
                 vertexData[vtxCursor + 15] = 0;
 
                 vertexData[vtxCursor + 16] = xFrom;
                 vertexData[vtxCursor + 17] = yFrom;
-                vertexData[vtxCursor + 18] = -normal[0];
-                vertexData[vtxCursor + 19] = -normal[1];
-                vertexData[vtxCursor + 20] = prevDistance;
+                vertexData[vtxCursor + 18] = -normalFrom[0];
+                vertexData[vtxCursor + 19] = -normalFrom[1];
+                vertexData[vtxCursor + 20] = distanceFrom;
                 vertexData[vtxCursor + 21] = +1;
                 vertexData[vtxCursor + 22] = c;
                 vertexData[vtxCursor + 23] = 0;
 
                 vertexData[vtxCursor + 24] = xTo;
                 vertexData[vtxCursor + 25] = yTo;
-                vertexData[vtxCursor + 26] = -normal[0];
-                vertexData[vtxCursor + 27] = -normal[1];
-                vertexData[vtxCursor + 28] = nextDistance;
+                vertexData[vtxCursor + 26] = -normalTo[0];
+                vertexData[vtxCursor + 27] = -normalTo[1];
+                vertexData[vtxCursor + 28] = distanceTo;
                 vertexData[vtxCursor + 29] = +1;
                 vertexData[vtxCursor + 30] = c;
                 vertexData[vtxCursor + 31] = 0;
@@ -495,8 +548,6 @@ gl_FragColor = map(v);
                 indexData[idxCursor + 3] = vtxCursor / 8 + 1;
                 indexData[idxCursor + 4] = vtxCursor / 8 + 3;
                 indexData[idxCursor + 5] = vtxCursor / 8 + 2;
-
-                prevDistance = nextDistance;
 
                 vtxCursor += 32;
                 idxCursor += 6;
@@ -543,8 +594,9 @@ gl_FragColor = map(v);
         // ];
 
         var configurations = {
-          "#uber": {
+          "uber": {
             basemap: "streets-night-vector",
+            shading: "lines",
             center: [-74.0060, 40.7128],
             zoom: 14,
             data: "./trips.json",
@@ -567,10 +619,67 @@ gl_FragColor = map(v);
               });
             }
           },
-          "#lime": {
+          "lime": {
             basemap: "streets-night-vector",
+            shading: "lines",
             center: [-78.6628949825737, 35.79226756975966],
-            zoom: 12,
+            zoom: 13,
+            data: "./raleigh-lime-trips.json",
+            getFeatures(dataset) {
+              var data = [];
+
+              for (var i = 0; i < dataset.features.length; ++i) {
+                var trip = dataset.features[i];
+                
+                for (var path of trip.geometry.paths) {
+                  data.push({
+                    attributes: {
+                      "vendor": 1
+                    },
+                    geometry: {
+                      paths: [path],
+                      type: "polyline",
+                      spatialReference: {
+                        wkid: 4326
+                      }
+                    }
+                  });
+                }
+              }
+
+              return data;
+            }
+          },
+          "uber-dots": {
+            basemap: "streets-night-vector",
+            shading: "dots",
+            center: [-74.0060, 40.7128],
+            zoom: 14,
+            data: "./trips.json",
+            getFeatures(dataset) {
+              return dataset.map(trip => {
+                var path = trip.segments.map(segment => [segment[0], segment[1]]);
+
+                return {
+                  attributes: {
+                    "vendor": trip.vendor
+                  },
+                  geometry: webMercatorUtils.geographicToWebMercator({
+                    paths: [path],
+                    type: "polyline",
+                    spatialReference: {
+                      wkid: 4326
+                    }
+                  })
+                };
+              });
+            }
+          },
+          "lime-dots": {
+            basemap: "streets-night-vector",
+            shading: "dots",
+            center: [-78.6628949825737, 35.79226756975966],
+            zoom: 13,
             data: "./raleigh-lime-trips.json",
             getFeatures(dataset) {
               var data = [];
@@ -599,7 +708,8 @@ gl_FragColor = map(v);
           }
         };
 
-        var configuration = configurations[location.hash || "#lime"];
+        var urlParams = new URLSearchParams(window.location.search);
+        var configuration = configurations[urlParams.get("c") ? urlParams.get("c") : "lime"];
 
         var map = new Map({
           basemap: configuration.basemap
@@ -612,11 +722,22 @@ gl_FragColor = map(v);
           zoom: configuration.zoom,
         });
 
+        view.when().then(() => {
+          fetch("links.html").then(response => response.text()).then((html) => {
+            const el = document.createElement("div");
+            el.className = "esri-widget";
+            el.style.padding = "1em";
+            el.innerHTML = html;
+            view.ui.add(el, "bottom-right");
+          });
+        });
+
         fetch(configuration.data).then(function (response) { return response.json(); }).then(function (tripsJson) {
           var graphics = configuration.getFeatures(tripsJson);
 
           var layer = new CustomLayer({
-            graphics: graphics
+            graphics: graphics,
+            shading: configuration.shading
           });
 
           map.layers.add(layer);

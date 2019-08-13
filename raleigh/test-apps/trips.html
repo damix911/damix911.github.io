@@ -37,7 +37,7 @@
           Graphic
         ) {
           var configurations = {
-            "#uber": {
+            "uber": {
               basemap: "streets-night-vector",
               center: [-74.0060, 40.7128],
               zoom: 14,
@@ -47,18 +47,31 @@
                 
                 for (var i = 0; i < dataset.length; ++i) {
                   var trip = dataset[i];
+
+                  var distance = 0;
+                  var waypoints = [];
+
+                  for (let i = 0; i < trip.segments.length; ++i) {
+                    var s = trip.segments[i];
+                    var xy = webMercatorUtils.lngLatToXY(s[0], s[1]);
+                    if (i > 0) {
+                      var r = trip.segments[i - 1];
+                      var xyPrev = webMercatorUtils.lngLatToXY(r[0], r[1]);
+                      distance += Math.sqrt((xy[0] - xyPrev[0]) * (xy[0] - xyPrev[0]) + (xy[1] - xyPrev[1]) * (xy[1] - xyPrev[1]));
+                    }
+                    waypoints.push({ coordinates: [s[0], s[1]], timestamp: Math.floor(distance * 3) });
+                  }
+
                   data.push({
                     vendor: trip.vendor,
-                    waypoints: trip.segments.map(function (s, i) {
-                      return { coordinates: [s[0], s[1]], timestamp: i * 1000 };
-                    })
+                    waypoints
                   });
                 }
 
                 return data;
               }
             },
-            "#lime": {
+            "lime": {
               basemap: "streets-night-vector",
               center: [-78.6628949825737, 35.79226756975966],
               zoom: 12,
@@ -70,23 +83,22 @@
                   var trip = dataset.features[i];
                   
                   for (var path of trip.geometry.paths) {
+                    var distance = 0;
+                    var waypoints = [];
+
+                    for (let i = 0; i < path.length; ++i) {
+                      var s = path[i];
+                      if (i > 0) {
+                        var r = path[i - 1];
+                        distance += Math.sqrt((s[0] - r[0]) * (s[0] - r[0]) + (s[1] - r[1]) * (s[1] - r[1]));
+                      }
+                      var lngLat = webMercatorUtils.xyToLngLat(s[0], s[1]);
+                      waypoints.push({ coordinates: lngLat, timestamp: Math.floor(distance * 3) });
+                    }
+
                     data.push({
                       vendor: 1,
-                      waypoints: path.map(function (s, i) {
-                        var lngLat = webMercatorUtils.xyToLngLat(s[0], s[1]);
-                        
-                        // var g = new Graphic({
-                        //   symbol: sms,
-                        //   geometry: {
-                        //     type: "point",
-                        //     x: lngLat[0],
-                        //     y: lngLat[1]
-                        //   }
-                        // });
-
-                        // view.graphics.add(g);
-                        return { coordinates: lngLat, timestamp: i * 1000 };
-                      })
+                      waypoints
                     });
                   }
                 }
@@ -96,7 +108,8 @@
             }
           };
 
-          var configuration = configurations[location.hash || "#lime"];
+          var urlParams = new URLSearchParams(window.location.search);
+          var configuration = configurations[urlParams.get("c") ? urlParams.get("c") : "lime"];
 
           var map = new Map({
             basemap: configuration.basemap
@@ -107,6 +120,16 @@
             map: map,
             center: configuration.center,
             zoom: configuration.zoom,
+          });
+
+          view.when().then(() => {
+            fetch("links.html").then(response => response.text()).then((html) => {
+              const el = document.createElement("div");
+              el.className = "esri-widget";
+              el.style.padding = "1em";
+              el.innerHTML = html;
+              view.ui.add(el, "bottom-right");
+            });
           });
           
           // Load the data and wait for esriDeck to be ready. In the future
@@ -129,7 +152,7 @@
               opacity: 1,
               widthMinPixels: 2,
               rounded: false,
-              trailLength: 2000,
+              trailLength: 500,
               currentTime: 0
             };
 
