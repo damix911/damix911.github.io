@@ -1,0 +1,36 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>deck.gl layers in MapView</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/4.12/esri/themes/light/main.css"/>
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+
+      #deckgl-overlay {
+        left: 0;
+        top: 0;
+        pointer-events: none;
+      }
+    </style>
+    
+    <!-- Load the ArcGIS API for JavaScript -->
+    <script src="https://js.arcgis.com/4.12/"></script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+    <script src='app.js'></script>
+  </body>
+</html>
