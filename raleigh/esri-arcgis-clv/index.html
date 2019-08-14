@@ -1,0 +1,752 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>Furious Lines - A Custom WebGL Layer View for Our Friends in Raleigh - 4.12</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/4.12/esri/themes/light/main.css"/>
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix.js"></script>
+    <script src="https://js.arcgis.com/4.12/"></script>
+
+    <script>
+      require([
+        "esri/Map",
+        "esri/core/watchUtils",
+        "esri/core/promiseUtils",
+        "esri/geometry/support/webMercatorUtils",
+        "esri/layers/GraphicsLayer",
+        "esri/views/MapView",
+        "esri/views/2d/layers/BaseLayerViewGL2D"
+      ], function(
+        Map,
+        watchUtils,
+        promiseUtils,
+        webMercatorUtils,
+        GraphicsLayer,
+        MapView,
+        BaseLayerViewGL2D
+      ) {
+        // Subclass the custom layer view from BaseLayerViewGL2D.
+        var CustomLayerView2D = BaseLayerViewGL2D.createSubclass({
+          // Locations of the two vertex attributes that we use. They
+          // will be bound to the shader program before linking.
+          aPosition: 0,
+          aOffset: 1,
+          aDistance: 2,
+          aSide: 3,
+          aColor: 4,
+
+          constructor: function() {
+            // Geometrical transformations that must be recomputed
+            // from scratch at every frame.
+            this.transform = mat3.create();
+            this.translationToCenter = vec2.create();
+            this.screenTranslation = vec2.create();
+
+            // Geometrical transformations whose only a few elements
+            // must be updated per frame. Those elements are marked
+            // with NaN.
+            this.display = mat3.fromValues(NaN, 0, 0, 0, NaN, 0, -1, 1, 1);
+            this.screenScaling = vec3.fromValues(NaN, NaN, 1);
+
+            // Whether the vertex and index buffers need to be updated
+            // due to a change in the layer data.
+            this.needsUpdate = false;
+
+            // We listen for changes to the graphics collection of the layer
+            // and trigger the generation of new frames. A frame rendered while
+            // `needsUpdate` is true may cause an update of the vertex and
+            // index buffers.
+            var requestUpdate = function() {
+              this.needsUpdate = true;
+              this.requestRender();
+            }.bind(this);
+
+            this.watcher = watchUtils.on(
+              this,
+              "layer.graphics",
+              "change",
+              requestUpdate,
+              requestUpdate,
+              requestUpdate
+            );
+          },
+
+          // Called once a custom layer is added to the map.layers collection and this layer view is instantiated.
+          attach: function() {
+            var gl = this.context;
+
+            var { vertexSource, fragmentSource } = this.getShaderSource();
+
+            var vertexShader = gl.createShader(gl.VERTEX_SHADER);
+            gl.shaderSource(vertexShader, vertexSource);
+            gl.compileShader(vertexShader);
+            console.log(gl.getShaderInfoLog(vertexShader));
+            var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+            gl.shaderSource(fragmentShader, fragmentSource);
+            gl.compileShader(fragmentShader);
+            console.log(gl.getShaderInfoLog(fragmentShader));
+
+            // Create the shader program.
+            this.program = gl.createProgram();
+            gl.attachShader(this.program, vertexShader);
+            gl.attachShader(this.program, fragmentShader);
+
+            // Bind attributes.
+            gl.bindAttribLocation(this.program, this.aPosition, "a_position");
+            gl.bindAttribLocation(this.program, this.aOffset, "a_offset");
+            gl.bindAttribLocation(this.program, this.aDistance, "a_distance");
+            gl.bindAttribLocation(this.program, this.aSide, "a_side");
+            gl.bindAttribLocation(this.program, this.aColor, "a_color");
+
+            // Link.
+            gl.linkProgram(this.program);
+            console.log(gl.getProgramInfoLog(this.program));
+
+            // Shader objects are not needed anymore.
+            gl.deleteShader(vertexShader);
+            gl.deleteShader(fragmentShader);
+
+            // Retrieve uniform locations once and for all.
+            this.uTransform = gl.getUniformLocation(
+              this.program,
+              "u_transform"
+            );
+            this.uDisplay = gl.getUniformLocation(this.program, "u_display");
+            this.uCurrentTime = gl.getUniformLocation(
+              this.program,
+              "u_current_time"
+            );
+
+            // Create the vertex and index buffer. They are initially empty. We need to track the
+            // size of the index buffer because we use indexed drawing.
+            this.vertexBuffer = gl.createBuffer();
+            this.indexBuffer = gl.createBuffer();
+
+            // Number of indices in the index buffer.
+            this.indexBufferSize = 0;
+
+            // When certain conditions occur, we update the buffers and re-compute and re-encode
+            // all the attributes. When buffer update occurs, we also take note of the current center
+            // of the view state, and we reset a vector called `translationToCenter` to [0, 0], meaning that the
+            // current center is the same as it was when the attributes were recomputed.
+            this.centerAtLastUpdate = vec2.fromValues(
+              this.view.state.center[0],
+              this.view.state.center[1]
+            );
+          },
+
+          // Called once a custom layer is removed from the map.layers collection and this layer view is destroyed.
+          detach: function() {
+            // Stop watching the `layer.graphics` collection.
+            this.watcher.remove();
+
+            var gl = this.context;
+
+            // Delete buffers and programs.
+            gl.deleteBuffer(this.vertexBuffer);
+            gl.deleteBuffer(this.indexBuffer);
+            gl.deleteProgram(this.program);
+          },
+
+          getShaderSource: function () {
+            const shaders = {
+              dots: {
+                vertex: `
+                  precision highp float;
+
+                  uniform mat3 u_transform;
+                  uniform mat3 u_display;
+
+                  attribute vec2 a_position;
+                  attribute vec2 a_offset;
+                  attribute float a_distance;
+                  attribute float a_side;
+                  attribute float a_color;
+
+                  varying float v_distance;
+                  varying float v_side;
+                  varying vec3 v_color;
+
+                  const float SIZE = 100.0;
+
+                  void main() {
+                  gl_Position.xy = (u_display * (u_transform * (vec3(a_position, 1.0) + vec3(a_offset * SIZE, 0.0)))).xy;
+                  gl_Position.zw = vec2(0.0, 1.0);
+                  v_distance = a_distance;
+                  v_side = a_side;
+                  v_color = mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), a_color);
+                  }`,
+                fragment: `
+                  precision highp float;
+
+                  uniform float u_current_time;
+
+                  varying float v_distance;
+                  varying float v_side;
+                  varying vec3 v_color;
+
+                  const float PARTICLE_LENGTH = 100.0;
+
+                  float rand(vec2 co) {
+                  return fract(sin(dot(co.xy ,vec2(12.9898, 78.233))) * 43758.5453);
+                  }
+
+                  float y(float s) {
+                  return 0.5 + 0.3 * sin(s);
+                  }
+
+                  float intensity(vec2 uv, float random) {
+                  vec2 point = vec2(0.8, y(u_current_time + PARTICLE_LENGTH * random));
+
+                  float delay = point.x - uv.x;
+                  float yTrail = y(u_current_time + PARTICLE_LENGTH * random - delay);
+
+                  float spotIntensity = pow(1.0 - length(point - uv), 30.0);
+                  float trailIntesity;
+
+                  if (uv.x > 0.8) {
+                    trailIntesity = 0.0;
+                  } else {
+                    trailIntesity = pow(1.0 - abs(yTrail - uv.y), 30.0) * exp(-4.0 * (1.0 - uv.x));
+                  }
+
+                  return spotIntensity + 0.0 * trailIntesity;
+                  }
+
+                  vec4 map(float intensity) {
+                  return vec4(v_color * intensity, intensity);
+                  }
+
+                  vec4 shade(vec2 uv, float random) {
+                  float i = intensity(uv, random);
+                  vec4 color = map(i);
+
+                  return color;
+                  }
+
+                  float value(float d) {
+                  float seed = floor((v_distance + d) / PARTICLE_LENGTH - u_current_time);
+                  vec2 uv = vec2(fract((v_distance + d) / PARTICLE_LENGTH - u_current_time), 1.0 - v_side);
+                  float i = intensity(uv, rand(vec2(seed, 4234.239432)));
+                  return i;
+                  }
+
+                  void main() {
+                  float v = value(0.0);
+                  gl_FragColor = map(v);
+                  }`
+              },
+              lines: {
+                vertex: `
+                  precision highp float;
+
+                  uniform mat3 u_transform;
+                  uniform mat3 u_display;
+
+                  attribute vec2 a_position;
+                  attribute vec2 a_offset;
+                  attribute float a_distance;
+                  attribute float a_side;
+                  attribute float a_color;
+
+                  varying float v_distance;
+                  varying float v_side;
+                  varying vec3 v_color;
+
+                  const float SIZE = 50.0;
+
+                  void main() {
+                  gl_Position.xy = (u_display * (u_transform * (vec3(a_position, 1.0) + vec3(a_offset * SIZE, 0.0)))).xy;
+                  gl_Position.zw = vec2(0.0, 1.0);
+                  v_distance = a_distance;
+                  v_side = a_side;
+                  v_color = mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), a_color);
+                  }`,
+                fragment: `
+                  precision highp float;
+
+                  uniform float u_current_time;
+
+                  varying float v_distance;
+                  varying float v_side;
+                  varying vec3 v_color;
+
+                  void main() {
+                    float d = v_distance - u_current_time * 100.0;
+                    float a1 = d < 500.0 ? mix(0.0, 1.0, d / 500.0) : 0.0;
+                    float a2 = exp(-abs(v_side) * 10.0);
+                    float a = a1 * a2;
+                    gl_FragColor = vec4(v_color * a, a);
+                  }`
+              }
+            };
+
+            const { vertex, fragment } = shaders[this.layer.shading];
+
+            return { vertexSource: vertex, fragmentSource: fragment };
+          },
+
+          // Called every time a frame is rendered.
+          render: function(renderParameters) {
+            var gl = renderParameters.context;
+            var state = renderParameters.state;
+
+            // Update vertex positions. This may trigger an update of
+            // the vertex coordinates contained in the vertex buffer.
+            // There are three kinds of updates:
+            //  - Modification of the layer.graphics collection ==> Buffer update
+            //  - The view state becomes non-stationary ==> Only view update, no buffer update
+            //  - The view state becomes stationary ==> Buffer update
+            this.updatePositions(renderParameters);
+
+            // If there is nothing to render we return.
+            if (this.indexBufferSize === 0) {
+              return;
+            }
+
+            // Update view `transform` matrix; it converts from map units to pixels.
+            mat3.identity(this.transform);
+            this.screenTranslation[0] = (state.pixelRatio * state.size[0]) / 2;
+            this.screenTranslation[1] = (state.pixelRatio * state.size[1]) / 2;
+            mat3.translate(
+              this.transform,
+              this.transform,
+              this.screenTranslation
+            );
+            mat3.rotate(
+              this.transform,
+              this.transform,
+              (Math.PI * state.rotation) / 180
+            );
+            this.screenScaling[0] = state.pixelRatio / state.resolution;
+            this.screenScaling[1] = -state.pixelRatio / state.resolution;
+            mat3.scale(this.transform, this.transform, this.screenScaling);
+            mat3.translate(
+              this.transform,
+              this.transform,
+              this.translationToCenter
+            );
+
+            // Update view `display` matrix; it converts from pixels to normalized device coordinates.
+            this.display[0] = 2 / (state.pixelRatio * state.size[0]);
+            this.display[4] = -2 / (state.pixelRatio * state.size[1]);
+
+            // Draw.
+            gl.useProgram(this.program);
+            gl.uniformMatrix3fv(this.uTransform, false, this.transform);
+            gl.uniformMatrix3fv(this.uDisplay, false, this.display);
+            gl.uniform1f(this.uCurrentTime, performance.now() / 1000.0);
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+            gl.enableVertexAttribArray(this.aPosition);
+            gl.enableVertexAttribArray(this.aOffset);
+            gl.enableVertexAttribArray(this.aDistance);
+            gl.enableVertexAttribArray(this.aSide);
+            gl.enableVertexAttribArray(this.aColor);
+            gl.vertexAttribPointer(this.aPosition, 2, gl.FLOAT, false, 32, 0);
+            gl.vertexAttribPointer(this.aOffset, 2, gl.FLOAT, false, 32, 8);
+            gl.vertexAttribPointer(this.aDistance, 1, gl.FLOAT, false, 32, 16);
+            gl.vertexAttribPointer(this.aSide, 1, gl.FLOAT, false, 32, 20);
+            gl.vertexAttribPointer(this.aColor, 1, gl.FLOAT, false, 32, 24);
+            gl.enable(gl.BLEND);
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+            gl.drawElements(
+              gl.TRIANGLES,
+              this.indexBufferSize,
+              gl.UNSIGNED_SHORT,
+              0
+            );
+
+            // Request new render because markers are animated.
+            this.requestRender();
+          },
+
+          // Called internally from render().
+          updatePositions: function(renderParameters) {
+            var gl = renderParameters.context;
+            var stationary = renderParameters.stationary;
+            var state = renderParameters.state;
+
+            // If we are not stationary we simply update the `translationToCenter` vector.
+            if (!stationary) {
+              vec2.sub(
+                this.translationToCenter,
+                this.centerAtLastUpdate,
+                state.center
+              );
+              this.requestRender();
+              return;
+            }
+
+            // If we are stationary, the `layer.graphics` collection has not changed, and
+            // we are centered on the `centerAtLastUpdate`, we do nothing.
+            if (
+              !this.needsUpdate &&
+              this.translationToCenter[0] === 0 &&
+              this.translationToCenter[1] === 0
+            ) {
+              return;
+            }
+
+            // Otherwise, we record the new encoded center, which imply a reset of the `translationToCenter` vector,
+            // we record the update time, and we proceed to update the buffers.
+            this.centerAtLastUpdate.set(state.center);
+            this.translationToCenter[0] = 0;
+            this.translationToCenter[1] = 0;
+            this.needsUpdate = false;
+
+            var graphics = this.layer.graphics;
+
+            // Allocate space
+            let vtxCount = 0;
+            let idxCount = 0;
+
+            for (var i = 0; i < graphics.items.length; ++i) {
+              var graphic = graphics.items[i];
+              var path = graphic.geometry.paths[0];
+
+              for (let j = 0; j < path.length - 1; ++j) {
+                vtxCount += 4;
+                idxCount += 6;
+              }
+            }
+            
+            var vertexData = new Float32Array(8 * vtxCount);
+            var indexData = new Uint16Array(idxCount);
+
+            // Generate geometry
+            let vtxCursor = 0;
+            let idxCursor = 0;
+
+            var normal = vec2.create();
+            var prevNormal = vec2.create();
+            var nextNormal = vec2.create();
+          
+            for (var i = 0; i < graphics.items.length; ++i) {
+              var graphic = graphics.items[i];
+              var path = graphic.geometry.paths[0];
+              var c = graphic.attributes["vendor"];
+              var positions = [];
+              var normals = [];
+              var distance = 0;
+              var nextDistance = 0;
+              var distances = [];
+
+              for (let j = 0; j < path.length; ++j) {
+                distance = nextDistance;
+
+                var curr = {
+                  x: path[j][0],
+                  y: path[j][1]
+                };
+
+                var xCurr = curr.x - this.centerAtLastUpdate[0];
+                var yCurr = curr.y - this.centerAtLastUpdate[1];
+
+                if (j > 0) {
+                  prevNormal[0] = nextNormal[0];
+                  prevNormal[1] = nextNormal[1];
+                }
+
+                if (j === path.length - 1) {
+                  nextNormal[0] = prevNormal[0];
+                  nextNormal[1] = prevNormal[1];
+                } else {
+                  var next = (j < path.length - 1) ? {
+                    x: path[j + 1][0],
+                    y: path[j + 1][1]
+                  } : null;
+
+                  var xNext = next.x - this.centerAtLastUpdate[0];
+                  var yNext = next.y - this.centerAtLastUpdate[1];
+                  
+                  nextNormal[0] = -(yNext - yCurr);
+                  nextNormal[1] = xNext - xCurr;
+                  nextDistance += vec2.length(nextNormal);
+                  vec2.normalize(nextNormal, nextNormal);
+                }
+
+                if (j === 0) {
+                  prevNormal[0] = nextNormal[0];
+                  prevNormal[1] = nextNormal[1];
+                }
+                
+                normal[0] = prevNormal[0] + nextNormal[0];
+                normal[1] = prevNormal[1] + nextNormal[1];
+                vec2.normalize(normal, normal);
+
+                positions.push([xCurr, yCurr]);
+                normals.push([normal[0], normal[1]]);
+                distances.push(distance);
+              }
+
+              for (let j = 0; j < path.length - 1; ++j) {
+                const xFrom = positions[j][0];
+                const yFrom = positions[j][1];
+                const normalFrom = normals[j];
+                const distanceFrom = distances[j];
+
+                const xTo = positions[j + 1][0];
+                const yTo = positions[j + 1][1];
+                const normalTo = normals[j + 1];
+                const distanceTo = distances[j + 1];
+                
+                vertexData[vtxCursor + 0] = xFrom;
+                vertexData[vtxCursor + 1] = yFrom;
+                vertexData[vtxCursor + 2] = normalFrom[0];
+                vertexData[vtxCursor + 3] = normalFrom[1];
+                vertexData[vtxCursor + 4] = distanceFrom;
+                vertexData[vtxCursor + 5] = -1;
+                vertexData[vtxCursor + 6] = c;
+                vertexData[vtxCursor + 7] = 0;
+
+                vertexData[vtxCursor + 8] = xTo;
+                vertexData[vtxCursor + 9] = yTo;
+                vertexData[vtxCursor + 10] = normalTo[0];
+                vertexData[vtxCursor + 11] = normalTo[1];
+                vertexData[vtxCursor + 12] = distanceTo;
+                vertexData[vtxCursor + 13] = -1;
+                vertexData[vtxCursor + 14] = c;
+                vertexData[vtxCursor + 15] = 0;
+
+                vertexData[vtxCursor + 16] = xFrom;
+                vertexData[vtxCursor + 17] = yFrom;
+                vertexData[vtxCursor + 18] = -normalFrom[0];
+                vertexData[vtxCursor + 19] = -normalFrom[1];
+                vertexData[vtxCursor + 20] = distanceFrom;
+                vertexData[vtxCursor + 21] = +1;
+                vertexData[vtxCursor + 22] = c;
+                vertexData[vtxCursor + 23] = 0;
+
+                vertexData[vtxCursor + 24] = xTo;
+                vertexData[vtxCursor + 25] = yTo;
+                vertexData[vtxCursor + 26] = -normalTo[0];
+                vertexData[vtxCursor + 27] = -normalTo[1];
+                vertexData[vtxCursor + 28] = distanceTo;
+                vertexData[vtxCursor + 29] = +1;
+                vertexData[vtxCursor + 30] = c;
+                vertexData[vtxCursor + 31] = 0;
+
+                indexData[idxCursor + 0] = vtxCursor / 8 + 0;
+                indexData[idxCursor + 1] = vtxCursor / 8 + 1;
+                indexData[idxCursor + 2] = vtxCursor / 8 + 2;
+                indexData[idxCursor + 3] = vtxCursor / 8 + 1;
+                indexData[idxCursor + 4] = vtxCursor / 8 + 3;
+                indexData[idxCursor + 5] = vtxCursor / 8 + 2;
+
+                vtxCursor += 32;
+                idxCursor += 6;
+              }
+            }
+
+            gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
+            gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
+            gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexData, gl.STATIC_DRAW);
+            
+            // Record number of indices.
+            this.indexBufferSize = indexData.length;
+          }
+        });
+
+        var CustomLayer = GraphicsLayer.createSubclass({
+          createLayerView: function(view) {
+            if (view.type === "2d") {
+              return new CustomLayerView2D({
+                view: view,
+                layer: this
+              });
+            }
+          }
+        });
+
+        // var graphics = [
+        //   {
+        //     geometry: webMercatorUtils.geographicToWebMercator({
+        //       paths: [
+        //         [
+        //           [-78.6382, 35.7796],
+        //           [-78.6, 35.77],
+        //           [-78.57, 35.75],
+        //         ]
+        //       ],
+        //       type: "polyline",
+        //       spatialReference: {
+        //         wkid: 4326
+        //       }
+        //     })
+        //   }
+        // ];
+
+        var configurations = {
+          "uber": {
+            basemap: "streets-night-vector",
+            shading: "lines",
+            center: [-74.0060, 40.7128],
+            zoom: 14,
+            data: "./trips.json",
+            getFeatures(dataset) {
+              return dataset.map(trip => {
+                var path = trip.segments.map(segment => [segment[0], segment[1]]);
+
+                return {
+                  attributes: {
+                    "vendor": trip.vendor
+                  },
+                  geometry: webMercatorUtils.geographicToWebMercator({
+                    paths: [path],
+                    type: "polyline",
+                    spatialReference: {
+                      wkid: 4326
+                    }
+                  })
+                };
+              });
+            }
+          },
+          "lime": {
+            basemap: "streets-night-vector",
+            shading: "lines",
+            center: [-78.6628949825737, 35.79226756975966],
+            zoom: 13,
+            data: "./raleigh-lime-trips.json",
+            getFeatures(dataset) {
+              var data = [];
+
+              for (var i = 0; i < dataset.features.length; ++i) {
+                var trip = dataset.features[i];
+                
+                for (var path of trip.geometry.paths) {
+                  data.push({
+                    attributes: {
+                      "vendor": 1
+                    },
+                    geometry: {
+                      paths: [path],
+                      type: "polyline",
+                      spatialReference: {
+                        wkid: 4326
+                      }
+                    }
+                  });
+                }
+              }
+
+              return data;
+            }
+          },
+          "uber-dots": {
+            basemap: "streets-night-vector",
+            shading: "dots",
+            center: [-74.0060, 40.7128],
+            zoom: 14,
+            data: "./trips.json",
+            getFeatures(dataset) {
+              return dataset.map(trip => {
+                var path = trip.segments.map(segment => [segment[0], segment[1]]);
+
+                return {
+                  attributes: {
+                    "vendor": trip.vendor
+                  },
+                  geometry: webMercatorUtils.geographicToWebMercator({
+                    paths: [path],
+                    type: "polyline",
+                    spatialReference: {
+                      wkid: 4326
+                    }
+                  })
+                };
+              });
+            }
+          },
+          "lime-dots": {
+            basemap: "streets-night-vector",
+            shading: "dots",
+            center: [-78.6628949825737, 35.79226756975966],
+            zoom: 13,
+            data: "./raleigh-lime-trips.json",
+            getFeatures(dataset) {
+              var data = [];
+
+              for (var i = 0; i < dataset.features.length; ++i) {
+                var trip = dataset.features[i];
+                
+                for (var path of trip.geometry.paths) {
+                  data.push({
+                    attributes: {
+                      "vendor": 1
+                    },
+                    geometry: {
+                      paths: [path],
+                      type: "polyline",
+                      spatialReference: {
+                        wkid: 4326
+                      }
+                    }
+                  });
+                }
+              }
+
+              return data;
+            }
+          }
+        };
+
+        var urlParams = new URLSearchParams(window.location.search);
+        var configuration = configurations[urlParams.get("c") ? urlParams.get("c") : "lime"];
+
+        var map = new Map({
+          basemap: configuration.basemap
+        });
+
+        var view = new MapView({
+          container: "viewDiv",
+          map: map,
+          center: configuration.center,
+          zoom: configuration.zoom,
+        });
+
+        view.when().then(() => {
+          fetch("links.html").then(response => response.text()).then((html) => {
+            const el = document.createElement("div");
+            el.className = "esri-widget";
+            el.style.padding = "1em";
+            el.innerHTML = html;
+            view.ui.add(el, "bottom-right");
+          });
+        });
+
+        fetch(configuration.data).then(function (response) { return response.json(); }).then(function (tripsJson) {
+          var graphics = configuration.getFeatures(tripsJson);
+
+          var layer = new CustomLayer({
+            graphics: graphics,
+            shading: configuration.shading
+          });
+
+          map.layers.add(layer);
+        });
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+  </body>
+</html>
