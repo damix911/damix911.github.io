@@ -164,6 +164,9 @@
           },
 
           getShaderSource: function () {
+            const color0 = `vec3(253.0 / 255.0, 128.0 / 255.0, 93.0 / 255.0)`;
+            const color1 = `vec3(23.0 / 255.0, 184.0 / 255.0, 190.0 / 255.0)`;
+
             const shaders = {
               dots: {
                 vertex: `
@@ -189,7 +192,7 @@
                   gl_Position.zw = vec2(0.0, 1.0);
                   v_distance = a_distance;
                   v_side = a_side;
-                  v_color = mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), a_color);
+                  v_color = mix(${color0}, ${color1}, a_color);
                   }`,
                 fragment: `
                   precision highp float;
@@ -275,7 +278,7 @@
                   gl_Position.zw = vec2(0.0, 1.0);
                   v_distance = a_distance;
                   v_side = a_side;
-                  v_color = mix(vec3(1.0, 1.0, 0.0), vec3(0.0, 1.0, 0.0), a_color);
+                  v_color = mix(${color0}, ${color1}, a_color);
                   }`,
                 fragment: `
                   precision highp float;
