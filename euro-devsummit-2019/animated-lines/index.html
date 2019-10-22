@@ -133,16 +133,21 @@
               "varying float v_side;" +
               "varying vec4 v_startColor;" +
               "varying vec4 v_endColor;" +
-              "const float TRAIL_SPEED = 200.0;" +
-              "const float TRAIL_LENGTH = 300.0;" +
-              "const float TRAIL_CYCLE = 3000.0;" +
+              "const float TRAIL_SPEED = 100.0;" +
+              "const float TRAIL_SPACING = 5.0;" +
+              "const float TRAIL_CYCLE = 300.0;" +
               "void main() {" +
-              "  float d = mod(v_distance.x - u_current_time * TRAIL_SPEED, TRAIL_CYCLE);" +
-              "  float a1 = d < TRAIL_LENGTH ? mix(0.0, 1.0, d / TRAIL_LENGTH) : 0.0;" +
-              "  float a2 = exp(-abs(v_side) * 3.0);" +
-              "  float a = a1 * a2;" +
+              "  float numerator = v_distance.x - u_current_time * TRAIL_SPEED;" +
+              "  float f = floor(numerator / TRAIL_CYCLE);" +
+              "  float d = numerator - TRAIL_CYCLE * f;" +
+              "  float a1 = d / TRAIL_CYCLE;" +
+              "  float a2 = exp(-abs(v_side) * 5.0);" +
+              "  float a3 = a1 > 0.95 ? mix(1.0, 0.0, (a1 - 0.95) / 0.05) : 1.0;" +
+              "  float a4 = 1.0 - clamp(mod(f, TRAIL_SPACING), 0.0, 1.0);" +
+              "  float a = a1 * a2 * a3 * a4;" +
+              "  float aPow = pow(a, 1.5);" +
               "  float completion = clamp(v_distance.x / v_distance.y, 0.0, 1.0);" +
-              "  gl_FragColor = mix(v_startColor, v_endColor, completion) * a;" +
+              "  gl_FragColor = (mix(v_startColor, v_endColor, completion) + aPow) * a;" +
               "}";
 
             var vertexShader = gl.createShader(gl.VERTEX_SHADER);
@@ -267,7 +272,7 @@
               this.extrude,
               (Math.PI * state.rotation) / 180
             );
-            const HALF_WIDTH = 6;
+            const HALF_WIDTH = 8;
             mat3.scale(this.extrude, this.extrude, [
               HALF_WIDTH,
               -HALF_WIDTH,
@@ -313,7 +318,7 @@
               28
             );
             gl.enable(gl.BLEND);
-            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+            gl.blendFunc(gl.ONE, gl.ONE);
             gl.drawElements(
               gl.TRIANGLES,
               this.indexBufferSize,
@@ -393,7 +398,6 @@
 
               // Compute length of the line.
               var length = 0;
-                            // Process each vertex.
               for (var j = 1; j < path.length; ++j) {
                 var delta = [path[j][0] - path[j - 1][0], path[j][0] - path[j - 1][0]];
                 var deltaLength = Math.sqrt(
@@ -614,6 +618,8 @@
           map: map,
           center: [-74.006, 40.7128],
           zoom: 15
+          // center: [-74.01, 40.72],
+          // zoom: 15
         });
 
         esriRequest(
@@ -622,6 +628,9 @@
             responseType: "json"
           }
         ).then(function(response) {
+          // var oneTrip = response.data[0];
+          // response.data = [oneTrip];
+
           var graphics = response.data.map(function(trip) {
             return {
               attributes: {
