@@ -607,7 +607,6 @@
         var map = new Map({
           basemap: {
             portalItem: {
-              // id: "9d5cf81cf8ce437584cedc8a2ee4ea4e"
               id: "074dcdd1fb87494cb1886475b53287ec"
             }
           }
@@ -618,8 +617,6 @@
           map: map,
           center: [-74.006, 40.7128],
           zoom: 15
-          // center: [-74.01, 40.72],
-          // zoom: 15
         });
 
         esriRequest(
@@ -628,9 +625,6 @@
             responseType: "json"
           }
         ).then(function(response) {
-          // var oneTrip = response.data[0];
-          // response.data = [oneTrip];
-
           var graphics = response.data.map(function(trip) {
             return {
               attributes: {
