@@ -7,11 +7,13 @@ with open("lines-original.json", "r") as f:
 surf_green = [161, 210, 135]
 shimmering_blush = [217, 134, 149]
 cerulean_frost = [109, 155, 195]
+red = [255, 0, 0]
+blue = [0, 0, 255]
 
 for line in lines:
   # line["color"] = random.choice([cerulean_frost, shimmering_blush])
-  line["startColor"] = shimmering_blush
-  line["endColor"] = cerulean_frost
+  line["startColor"] = red
+  line["endColor"] = blue
 
 with open("lines.json", "w") as f:
   json.dump(lines, f)

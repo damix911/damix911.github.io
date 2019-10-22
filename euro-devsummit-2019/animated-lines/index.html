@@ -109,11 +109,11 @@
               "uniform mat3 u_display;" +
               "attribute vec2 a_position;" +
               "attribute vec2 a_offset;" +
-              "attribute float a_distance;" +
+              "attribute vec2 a_distance;" +
               "attribute float a_side;" +
               "attribute vec4 a_startColor;" +
               "attribute vec4 a_endColor;" +
-              "varying float v_distance;" +
+              "varying vec2 v_distance;" +
               "varying float v_side;" +
               "varying vec4 v_startColor;" +
               "varying vec4 v_endColor;" +
@@ -129,19 +129,20 @@
             var fragmentSource =
               "precision highp float;" +
               "uniform float u_current_time;" +
-              "varying float v_distance;" +
+              "varying vec2 v_distance;" +
               "varying float v_side;" +
               "varying vec4 v_startColor;" +
               "varying vec4 v_endColor;" +
-              "const float TRAIL_SPEED = 50.0;" +
+              "const float TRAIL_SPEED = 200.0;" +
               "const float TRAIL_LENGTH = 300.0;" +
-              "const float TRAIL_CYCLE = 1000.0;" +
+              "const float TRAIL_CYCLE = 3000.0;" +
               "void main() {" +
-              "  float d = mod(v_distance - u_current_time * TRAIL_SPEED, TRAIL_CYCLE);" +
+              "  float d = mod(v_distance.x - u_current_time * TRAIL_SPEED, TRAIL_CYCLE);" +
               "  float a1 = d < TRAIL_LENGTH ? mix(0.0, 1.0, d / TRAIL_LENGTH) : 0.0;" +
               "  float a2 = exp(-abs(v_side) * 3.0);" +
               "  float a = a1 * a2;" +
-              "  gl_FragColor = v_endColor * a;" +
+              "  float completion = clamp(v_distance.x / v_distance.y, 0.0, 1.0);" +
+              "  gl_FragColor = mix(v_startColor, v_endColor, completion) * a;" +
               "}";
 
             var vertexShader = gl.createShader(gl.VERTEX_SHADER);
@@ -199,6 +200,9 @@
               this.view.state.center[0],
               this.view.state.center[1]
             );
+
+            // Start time of the visualization.
+            this.startTime = performance.now();
           },
 
           // Called once a custom layer is removed from the map.layers collection and this layer view is destroyed.
@@ -279,7 +283,7 @@
             gl.uniformMatrix3fv(this.uTransform, false, this.transform);
             gl.uniformMatrix3fv(this.uExtrude, false, this.extrude);
             gl.uniformMatrix3fv(this.uDisplay, false, this.display);
-            gl.uniform1f(this.uCurrentTime, performance.now() / 1000.0);
+            gl.uniform1f(this.uCurrentTime, (performance.now() - this.startTime) / 1000.0);
             gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
             gl.enableVertexAttribArray(this.aPosition);
@@ -290,7 +294,7 @@
             gl.enableVertexAttribArray(this.aEndColor);
             gl.vertexAttribPointer(this.aPosition, 2, gl.FLOAT, false, 32, 0);
             gl.vertexAttribPointer(this.aOffset, 2, gl.FLOAT, false, 32, 8);
-            gl.vertexAttribPointer(this.aDistance, 1, gl.FLOAT, false, 32, 16);
+            gl.vertexAttribPointer(this.aDistance, 2, gl.UNSIGNED_SHORT, false, 32, 16);
             gl.vertexAttribPointer(this.aSide, 1, gl.FLOAT, false, 32, 20);
             gl.vertexAttribPointer(
               this.aStartColor,
@@ -371,6 +375,7 @@
 
             var vertexData = new ArrayBuffer(8 * vtxCount * 4);
             var floatData = new Float32Array(vertexData);
+            var distanceData = new Uint16Array(vertexData);
             var colorData = new Uint8Array(vertexData);
             var indexData = new Uint16Array(idxCount);
 
@@ -385,6 +390,17 @@
               var path = graphic.geometry.paths[0];
               var startColor = graphic.attributes["startColor"];
               var endColor = graphic.attributes["endColor"];
+
+              // Compute length of the line.
+              var length = 0;
+                            // Process each vertex.
+              for (var j = 1; j < path.length; ++j) {
+                var delta = [path[j][0] - path[j - 1][0], path[j][0] - path[j - 1][0]];
+                var deltaLength = Math.sqrt(
+                  delta[0] * delta[0] + delta[1] * delta[1]
+                );
+                length += deltaLength;
+              }
 
               // Initialize new triangulation state.
               var s = {};
@@ -449,7 +465,8 @@
                     s.current[1] - this.centerAtLastUpdate[1];
                   floatData[vtxCursor * 8 + 2] = s.offset[0];
                   floatData[vtxCursor * 8 + 3] = s.offset[1];
-                  floatData[vtxCursor * 8 + 4] = s.distance;
+                  distanceData[2 * (vtxCursor * 8 + 4) + 0] = s.distance;
+                  distanceData[2 * (vtxCursor * 8 + 4) + 1] = length;
                   floatData[vtxCursor * 8 + 5] = +1;
                   colorData[4 * (vtxCursor * 8 + 6) + 0] = startColor[0];
                   colorData[4 * (vtxCursor * 8 + 6) + 1] = startColor[1];
@@ -468,7 +485,8 @@
                     s.current[1] - this.centerAtLastUpdate[1];
                   floatData[vtxCursor * 8 + 10] = -s.offset[0];
                   floatData[vtxCursor * 8 + 11] = -s.offset[1];
-                  floatData[vtxCursor * 8 + 12] = s.distance;
+                  distanceData[2 * (vtxCursor * 8 + 12) + 0] = s.distance;
+                  distanceData[2 * (vtxCursor * 8 + 12) + 1] = length;
                   floatData[vtxCursor * 8 + 13] = -1;
                   colorData[4 * (vtxCursor * 8 + 14) + 0] = startColor[0];
                   colorData[4 * (vtxCursor * 8 + 14) + 1] = startColor[1];
@@ -514,7 +532,8 @@
                 s.current[1] - this.centerAtLastUpdate[1];
               floatData[vtxCursor * 8 + 2] = s.offset[0];
               floatData[vtxCursor * 8 + 3] = s.offset[1];
-              floatData[vtxCursor * 8 + 4] = s.distance;
+              distanceData[2 * (vtxCursor * 8 + 4) + 0] = s.distance;
+              distanceData[2 * (vtxCursor * 8 + 4) + 1] = length;
               floatData[vtxCursor * 8 + 5] = +1;
               colorData[4 * (vtxCursor * 8 + 6) + 0] = startColor[0];
               colorData[4 * (vtxCursor * 8 + 6) + 1] = startColor[1];
@@ -530,7 +549,8 @@
                 s.current[1] - this.centerAtLastUpdate[1];
               floatData[vtxCursor * 8 + 10] = -s.offset[0];
               floatData[vtxCursor * 8 + 11] = -s.offset[1];
-              floatData[vtxCursor * 8 + 12] = s.distance;
+              distanceData[2 * (vtxCursor * 8 + 12) + 0] = s.distance;
+              distanceData[2 * (vtxCursor * 8 + 12) + 1] = length;
               floatData[vtxCursor * 8 + 13] = -1;
               colorData[4 * (vtxCursor * 8 + 14) + 0] = startColor[0];
               colorData[4 * (vtxCursor * 8 + 14) + 1] = startColor[1];
