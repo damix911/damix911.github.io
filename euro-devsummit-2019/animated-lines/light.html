@@ -318,7 +318,7 @@
               28
             );
             gl.enable(gl.BLEND);
-            gl.blendFunc(gl.ONE, gl.ONE);
+            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
             gl.drawElements(
               gl.TRIANGLES,
               this.indexBufferSize,
