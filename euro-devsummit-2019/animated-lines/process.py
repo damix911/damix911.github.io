@@ -1,5 +1,5 @@
 import json
-import random
+# import random
 
 with open("lines-original.json", "r") as f:
   lines = json.load(f)
@@ -9,7 +9,9 @@ shimmering_blush = [217, 134, 149]
 cerulean_frost = [109, 155, 195]
 
 for line in lines:
-  line["color"] = random.choice([cerulean_frost, shimmering_blush])
+  # line["color"] = random.choice([cerulean_frost, shimmering_blush])
+  line["startColor"] = shimmering_blush
+  line["endColor"] = cerulean_frost
 
 with open("lines.json", "w") as f:
   json.dump(lines, f)
