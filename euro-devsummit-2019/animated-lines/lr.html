@@ -578,8 +578,6 @@
               s.current = null;
             }
 
-            console.log(vtxCursor);
-
             // Upload data to the GPU.
             gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, vertexData, gl.STATIC_DRAW);
