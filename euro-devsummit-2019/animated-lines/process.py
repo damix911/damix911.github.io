@@ -1,7 +1,7 @@
 import json
 # import random
 
-with open("lines-lr-original.json", "r") as f:
+with open("lines-berlin-original.json", "r") as f:
   lines = json.load(f)
 
 surf_green = [161, 210, 135]
@@ -15,5 +15,5 @@ for line in lines:
   line["startColor"] = red
   line["endColor"] = blue
 
-with open("lines-lr.json", "w") as f:
+with open("lines-berlin.json", "w") as f:
   json.dump(lines, f)
