@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+ <NetworkLinkControl>
+  <minRefreshPeriod>120</minRefreshPeriod>
+  <expires>Wed, 29 May 2013 04:05:04 UTC</expires>
+ </NetworkLinkControl>
+ <Document id="active">
+   <name>Current Forecasts and Data</name>
+   <description>
+     <![CDATA[<TABLE>
+     <TR><TD><B>Last Update:</B> 00:05:04 UTC 29 May 2013</TD></TR>
+     <TR><TD><B>Created By:</B> NOAA/NWS National Hurricane Center</TD></TR>
+     <TR><TD><B>Disclaimer:</B> The NHC KML format is an experimental product that the National Hurricane Center is testing during the 2013 hurricane season.</TD></TR>
+     <TR><TD><B>For More Information: </B><a href="http://www.nhc.noaa.gov">http://www.nhc.noaa.gov</a></TD></TR></TABLE>]]>
+   </description>
+ <ScreenOverlay id="activeLegend">
+  <name>Legend</name>
+  <drawOrder>100</drawOrder>
+  <Icon>
+    <href>http://www.nhc.noaa.gov/gis/kml/active_legend.png</href>
+  </Icon>
+  <overlayXY x="0" y="1" xunits="fraction" yunits="fraction" />
+          <screenXY x="0" y="1" xunits="fraction" yunits="fraction" />
+          <rotationXY x="0.5" y="0.5" xunits="fraction" yunits="fraction" />
+          <size x="-1" y="-1" xunits="pixels" yunits="pixels" />
+ </ScreenOverlay>
+    <name>Active Tropical Cyclones</name>
+    <visibility>1</visibility>
+    <open>1</open>
+   <Folder id="wsp">
+    <name>Wind Speed Probabilities (120 hours)</name>
+    <visibility>1</visibility>
+    <open>1</open>
+   <description>
+     <![CDATA[<p>
+     <span style="font-weight:bold;">Last Update:</span> 21:04 UTC 28 May 2013
+      <br /><br /><img src="http://www.nhc.noaa.gov/images/wsp_legend.png" alt="Wind Speed Probabilities Legend" />
+     </p>]]>
+   </description>
+ <ScreenOverlay id="wspLegend">
+  <name>Legend: Wind Speed Probs</name>
+  <drawOrder>102</drawOrder>
+  <Icon>
+    <href>http://www.nhc.noaa.gov/images/wsp_legend.png</href>
+  </Icon>
+  <overlayXY x="0" y="0" xunits="fraction" yunits="fraction" />
+          <screenXY x="0" y="0" xunits="fraction" yunits="fraction" />
+          <rotationXY x="0.5" y="0.5" xunits="fraction" yunits="fraction" />
+          <size x="-1" y="-1" xunits="pixels" yunits="pixels" />
+ </ScreenOverlay>
+    <Folder id="wspValues">
+    <name>Values</name>
+    <visibility>1</visibility>
+    <open>1</open>
+    <Style>
+      <ListStyle>
+        <listItemType>radioFolder</listItemType>
+      </ListStyle>
+    </Style>
+   <NetworkLink id="wsp34">
+     <name>Tropical Storm (34-kt)</name>
+     <visibility>1</visibility>
+     <open>0</open>
+     <Link>
+      <href>http://www.nhc.noaa.gov/gis/forecast/archive/refresh/latest_wsp34knt120hr_tenthDeg+kmz/210406_wsp34knt120hr_tenthDeg.kmz</href>
+     </Link>
+   </NetworkLink>
+   <NetworkLink id="wsp50">
+     <name>Gale (50-kt)</name>
+     <visibility>0</visibility>
+     <open>0</open>
+     <Link>
+      <href>http://www.nhc.noaa.gov/gis/forecast/archive/refresh/latest_wsp50knt120hr_tenthDeg+kmz/210406_wsp50knt120hr_tenthDeg.kmz</href>
+     </Link>
+   </NetworkLink>
+   <NetworkLink id="wsp64">
+     <name>Hurricane (64-kt)</name>
+     <visibility>0</visibility>
+     <open>0</open>
+     <Link>
+      <href>http://www.nhc.noaa.gov/gis/forecast/archive/refresh/latest_wsp64knt120hr_tenthDeg+kmz/210406_wsp64knt120hr_tenthDeg.kmz</href>
+     </Link>
+   </NetworkLink>
+    </Folder>
+   </Folder>
+   <Folder id="ep2">
+     <name>Tropical Storm BARBARA (EP022013)</name>
+     <visibility>1</visibility>
+     <open>1</open>
+     <ExtendedData>
+       <Data name="tcType">
+         <value>TROPICAL STORM</value>
+       </Data>
+       <Data name="tcName">
+         <value>BARBARA</value>
+       </Data>
+       <Data name="wallet">
+         <value>EP2</value>
+       </Data>
+       <Data name="atcfID">
+         <value>EP022013</value>
+       </Data>
+       <Data name="centerLat">
+         <value>14.2</value>
+       </Data>
+       <Data name="centerLon">
+         <value>-96.0</value>
+       </Data>
+       <Data name="dateTime">
+         <value>5:00 PM PDT Tue May 28</value>
+       </Data>
+       <Data name="movement">
+         <value>Stationary</value>
+       </Data>
+       <Data name="minimumPressure">
+         <value>1004 mb</value>
+       </Data>
+       <Data name="maxSustainedWind">
+         <value>40 mph</value>
+       </Data>
+       <Data name="headline">
+         <value> ...DEPRESSION STRENGTHENS INTO TROPICAL STORM BARBARA...</value>
+       </Data>
+     </ExtendedData>
+     <ExtendedData xmlns:tc="http://www.nhc.noaa.gov/cyclones">
+       <tc:type>TROPICAL STORM</tc:type>
+       <tc:name>BARBARA</tc:name>
+       <tc:wallet>EP2</tc:wallet>
+       <tc:atcfID>EP022013</tc:atcfID>
+       <tc:centerLat>14.2</tc:centerLat>
+       <tc:centerLon>-96.0</tc:centerLon>
+       <tc:dateTime>5:00 PM PDT Tue May 28</tc:dateTime>
+       <tc:movement>Stationary</tc:movement>
+       <tc:minimumPressure>1004 mb</tc:minimumPressure>
+       <tc:maxSustainedWind>40 mph</tc:maxSustainedWind>
+       <tc:headline> ...DEPRESSION STRENGTHENS INTO TROPICAL STORM BARBARA...</tc:headline>
+     </ExtendedData>
+ <Folder id="ep2forecast">
+   <name>Forecast Information</name>
+   <visibility>1</visibility>
+   <open>1</open>
+   <description>
+    <![CDATA[<p>
+      <span style="font-weight:bold;">Last Update:</span> 23:51 UTC 28 May 2013
+      <br /><br /><img src="http://www.nhc.noaa.gov/images/forecast_legend_v6.png" alt="Forecast Legend" />
+    </p>]]>
+   </description>
+ <ScreenOverlay id="ep2forecastLegend">
+  <name>Legend: Forecast</name>
+  <visibility>0</visibility>
+  <drawOrder>100</drawOrder>
+  <Icon>
+    <href>http://www.nhc.noaa.gov/images/forecast_legend_v6.png</href>
+  </Icon>
+  <overlayXY x="0" y="0" xunits="fraction" yunits="fraction" />
+          <screenXY x="0" y="16" xunits="pixels" yunits="pixels" />
+          <rotationXY x="0.5" y="0.5" xunits="fraction" yunits="fraction" />
+          <size x="-1" y="-1" xunits="pixels" yunits="pixels" />
+ </ScreenOverlay>
+   <NetworkLink id="ep2forecastTRACK">
+     <name>Forecast Track</name>
+     <visibility>1</visibility>
+     <open>0</open>
+     <Link>
+       <href>http://www.nhc.noaa.gov/storm_graphics/EP02/refresh/EP0213_TRACK_latest+kmz/235109_EP0213_TRACK.kmz</href>
+     </Link>
+   </NetworkLink>
+   <NetworkLink id="ep2forecastCONE">
+     <name>Cone of Uncertainty</name>
+     <visibility>1</visibility>
+     <open>0</open>
+     <Link>
+       <href>http://www.nhc.noaa.gov/storm_graphics/EP02/refresh/EP0213_CONE_latest+kmz/235109_EP0213_CONE.kmz</href>
+     </Link>
+   </NetworkLink>
+   <NetworkLink id="ep2forecastWW">
+     <name>Watches and Warnings</name>
+     <visibility>1</visibility>
+     <open>0</open>
+     <Link>
+       <href>http://www.nhc.noaa.gov/storm_graphics/EP02/refresh/EP0213_WW_latest+kmz/235109_EP0213_WW.kmz</href>
+     </Link>
+   </NetworkLink>
+  </Folder>
+   </Folder>
+ </Document>
+</kml>

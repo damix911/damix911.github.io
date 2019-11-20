@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <NetworkLink id="wsp34">
+      <name>Tropical Storm (34-kt)</name>
+      <visibility>1</visibility>
+      <open>0</open>
+      <Link>
+        <href>last.kml</href>
+      </Link>
+    </NetworkLink>
+
+    <Placemark>
+      <name>A fourth one</name>
+      <description>Attached to the ground. Intelligently places itself
+        at the height of the underlying terrain.</description>
+      <Point>
+        <coordinates>-120.0822035425683,36.42228990140251,0</coordinates>
+      </Point>
+    </Placemark>
+  </Document>
+</kml>
