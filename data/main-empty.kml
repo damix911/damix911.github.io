@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <NetworkLink id="middle">
+      <name>Tropical Storm (34-kt)</name>
+      <visibility>1</visibility>
+      <open>0</open>
+      <Link>
+        <href>middle.kml</href>
+      </Link>
+    </NetworkLink>
+  </Document>
+</kml>
