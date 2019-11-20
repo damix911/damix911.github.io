@@ -11,11 +11,25 @@
     </NetworkLink>
 
     <Placemark>
-      <name>A fourth one</name>
+      <name>Simple placemark</name>
       <description>Attached to the ground. Intelligently places itself
         at the height of the underlying terrain.</description>
       <Point>
-        <coordinates>-120.0822035425683,36.42228990140251,0</coordinates>
+        <coordinates>-120,36,0</coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>Another placemark</name>
+      <description>Bla bla...</description>
+      <Point>
+        <coordinates>-120,35,0</coordinates>
+      </Point>
+    </Placemark>
+    <Placemark>
+      <name>Another placemark</name>
+      <description>Bla bla...</description>
+      <Point>
+        <coordinates>-119,35,0</coordinates>
       </Point>
     </Placemark>
   </Document>

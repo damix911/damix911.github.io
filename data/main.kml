@@ -15,21 +15,21 @@
       <description>Attached to the ground. Intelligently places itself
         at the height of the underlying terrain.</description>
       <Point>
-        <coordinates>-122.0822035425683,37.42228990140251,0</coordinates>
+        <coordinates>-122,37,0</coordinates>
       </Point>
     </Placemark>
     <Placemark>
       <name>Another placemark</name>
       <description>Bla bla...</description>
       <Point>
-        <coordinates>-121.0822035425683,37.42228990140251,0</coordinates>
+        <coordinates>-121,37,0</coordinates>
       </Point>
     </Placemark>
     <Placemark>
       <name>Another placemark</name>
       <description>Bla bla...</description>
       <Point>
-        <coordinates>-121.0822035425683,36.42228990140251,0</coordinates>
+        <coordinates>-121,36,0</coordinates>
       </Point>
     </Placemark>
   </Document>
