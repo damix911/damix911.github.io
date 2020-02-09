@@ -256,7 +256,7 @@ define(["esri/layers/Layer", "esri/core/Collection", "esri/views/2d/layers/BaseL
     // needs to be created for a given layer.
     createLayerView(view) {
       if (view.type === '2d') {
-        return new ArcGISDeckLayerView2D({
+        return new result.ArcGISDeckLayerView2D({
           view,
           layer: this
         });
