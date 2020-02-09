@@ -1,6 +1,8 @@
 define(["esri/layers/Layer", "esri/core/Collection", "esri/views/2d/layers/BaseLayerViewGL2D"], function (Layer, Collection, BaseLayerViewGL2D) {
   const result = {};
 
+  const DeckGL = deck.DeckGL;
+
   result.ArcGISDeckLayerView2D = BaseLayerViewGL2D.createSubclass({
     properties: {
       handles: {},
@@ -72,7 +74,7 @@ define(["esri/layers/Layer", "esri/core/Collection", "esri/views/2d/layers/BaseL
       this.createOrResizeFramebuffer(gl, this.view.state.size[0], this.view.state.size[1]);
   
       // Deck creation
-      this.deckgl = new Deck({
+      this.deckgl = new DeckGL({
         // The view state will be set dynamically to track the MapView current extent.
         initialViewState: {},
   
