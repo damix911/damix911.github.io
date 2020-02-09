@@ -75,6 +75,9 @@ define(["esri/layers/Layer", "esri/core/Collection", "esri/views/2d/layers/BaseL
   
       // Deck creation
       this.deckgl = new DeckGL({
+        // We need to provide a dummy container or the input controller will block any interaction with the page.
+        container: document.createElement("div"),
+
         // The view state will be set dynamically to track the MapView current extent.
         initialViewState: {},
   
