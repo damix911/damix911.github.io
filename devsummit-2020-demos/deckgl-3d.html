@@ -1,0 +1,94 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <!--
+  ArcGIS API for JavaScript, https://js.arcgis.com
+  For more information about the custom-lv-deckgl-3d sample, read the original sample description at developers.arcgis.com.
+  https://developers.arcgis.com/javascript/latest/sample-code/custom-lv-deckgl-3d/index.html
+  -->
+<title>Render a deck.gl layer with an external renderer (3D) - 4.15</title>
+
+    <script src="https://damix911.github.io/deckglbuilds/next/deck.gl@next/dist.min.js"></script>
+    <script src="https://damix911.github.io/deckglbuilds/next/@deck.gl/layers@next/dist.min.js"></script>
+    <script src="https://damix911.github.io/deckglbuilds/next/@deck.gl/geo-layers@next/dist.min.js"></script>
+    <script src="https://damix911.github.io/deckglbuilds/next/@deck.gl/arcgis@next/dist.min.js?v=100"></script>
+    <link rel="stylesheet" href="https://jsdev.arcgis.com/4.15/esri/themes/light/main.css"/>
+    <script src="https://jsdev.arcgis.com/4.15/"></script>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+
+    <script>
+      // We use the module we just defined, together with the other "standard" ArcGIS modules
+      require([
+        "esri/Map",
+        "esri/views/SceneView",
+        "esri/views/3d/externalRenderers"
+      ], function(Map, SceneView, externalRenderers) {
+        const TripsLayer = deck.TripsLayer;
+
+        deck.loadArcGISModules().then(function({ ArcGISDeckExternalRenderer }) {
+          const sceneView = new SceneView({
+            container: "viewDiv",
+            map: new Map({
+              basemap: "dark-gray-vector"
+            }),
+            camera: {
+              position: {
+                x: -74,
+                y: 40.65,
+                z: 5000
+              },
+
+              tilt: 55,
+              heading: 20
+            },
+            viewingMode: "local"
+          });
+
+          const extren = new ArcGISDeckExternalRenderer(sceneView, {
+            layers: []
+          });
+          
+          setInterval(() => {
+            extren.deck.layers = [
+              new TripsLayer({
+                id: 'trips',
+                data: "https://raw.githubusercontent.com/uber-common/deck.gl-data/master/examples/trips/trips-v7.json",
+                getPath: d => d.path,
+                getTimestamps: d => d.timestamps,
+                getColor: d => (d.vendor === 0 ? [253, 128, 93] : [23, 184, 190]),
+                opacity: 1.0,
+                widthMinPixels: 4,
+                rounded: true,
+                trailLength: 180,
+                currentTime: (performance.now() % 10000) / 10,
+                shadowEnabled: false
+              })
+            ];
+          }, 50);
+
+          setTimeout(() => {
+                        externalRenderers.add(sceneView, extren);
+          }, 5000);
+        });
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+  </body>
+</html>

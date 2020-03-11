@@ -1,0 +1,311 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>Build a custom layer view using Three.js - 4.15</title>
+
+    <script src="https://threejs.org/build/three.js"></script>
+    <script src="https://threejs.org/examples/js/loaders/GLTFLoader.js"></script>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.15/esri/themes/dark-green/main.css"/>
+    <script src="https://js.arcgis.com/4.14/"></script>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+      
+      #treesDiv {
+        padding: 5px 10px;
+      }
+      
+      .place-tree {
+        width: 48px;
+        height: 48px;
+        border: 1px solid #777;
+        border-radius: 3px;
+        margin: 5px 0px;
+        color: #777;
+        text-align: center;
+        font-size: 28px;
+        padding-top: 14px;
+        cursor: pointer;
+      }
+      
+      .place-tree.pressed {
+        transform: scale(0.9);
+        box-shadow: 0 0 2px 2px #71de6e;
+        text-shadow: 0 0 10px #71de6e;
+        color: #ff642e;
+        border: 1px solid #71de6e;
+      }
+    </style>
+
+    <script>
+      require([
+        "esri/Map",
+
+        "esri/core/watchUtils",
+        "esri/core/promiseUtils",
+
+        "esri/geometry/support/webMercatorUtils",
+
+        "esri/layers/GraphicsLayer",
+
+        "esri/views/MapView",
+
+        "esri/views/2d/layers/BaseLayerViewGL2D"
+      ], function(
+        ArcGISMap,
+        watchUtils,
+        promiseUtils,
+        webMercatorUtils,
+        GraphicsLayer,
+        MapView,
+        BaseLayerViewGL2D
+      ) {
+        var trees = [
+          {
+            name: "Deciduous",
+            icon: "🌳",
+            mesh: "https://damix911.github.io/assets/gltf/deciduous-tmp.glb",
+            transform: new THREE.Matrix4().makeScale(0.1, 0.1, 0.1)
+          },
+          {
+            name: "Evergreen",
+            icon: "🌲",
+            mesh: "https://damix911.github.io/assets/gltf/evergreen-tmp.glb",
+            transform: new THREE.Matrix4().makeScale(0.1, 0.1, 0.1)
+          },
+          {
+            name: "Palm",
+            icon: "🌴",
+            mesh: "https://damix911.github.io/assets/gltf/palm-tmp.glb",
+            transform: new THREE.Matrix4().makeScale(0.1, 0.1, 0.1)
+          },
+          {
+            name: "Cactus",
+            icon: "🌵",
+            mesh: "https://damix911.github.io/assets/gltf/cactus-tmp.glb",
+            transform: new THREE.Matrix4().makeScale(0.1, 0.1, 0.1)
+          }
+        ];
+        
+        // Subclass the custom layer view from BaseLayerViewGL2D.
+        var CustomLayerView2D = BaseLayerViewGL2D.createSubclass({
+          rebuildScene: function () {
+            if (!this.objects) {
+              return;
+            }
+            
+            this.graphicToObject.clear();
+            
+            while (this.objects.children.length > 0) {
+              this.objects.remove(this.objects.children[0]);
+            }
+            
+            for (var graphic of this.layer.graphics.items) {
+              if (!this.meshes[graphic.attributes.name]) {
+                continue;
+              }
+              
+              var o = this.meshes[graphic.attributes.name].clone();
+              o.matrixAutoUpdate = false;
+              o.matrix.copy(this.meshes[graphic.attributes.name].matrix);
+              var wrapper = new THREE.Group();
+              wrapper.add(o);
+              this.objects.add(wrapper);
+              this.graphicToObject.set(graphic, wrapper);
+            }
+            
+            this.requestRender();
+          },
+
+          // Called once a custom layer is added to the map.layers collection and this layer view is instantiated.
+          attach: function() {
+            var scene = new THREE.Scene();
+            var camera = new THREE.PerspectiveCamera( 75, window.innerWidth/window.innerHeight, 0.1, 1000 );
+
+            var layerView = this;
+            this.meshes = {};
+            
+            var loader = new THREE.GLTFLoader();
+            
+            for (var tree of trees) {
+              loader.load(
+                tree.mesh,
+                function (tree) {
+                  return function (gltf) {
+                    layerView.meshes[tree.name] = gltf.scene;
+                    layerView.meshes[tree.name].matrix.copy(tree.transform);
+                    layerView.rebuildScene();
+                  };
+                }(tree)
+              );
+            }
+            
+            this.graphicToObject = new Map();
+            this.objects = new THREE.Group();
+            scene.add(this.objects);
+            
+            var light = new THREE.PointLight( 0xffffff, 10, 0 );
+            light.position.set( 0, 0, 0 );
+            scene.add( light );
+            
+            var renderer = new THREE.WebGLRenderer( {
+              context: this.context,
+              alpha: true,
+              transparent: true,
+              premultipliedAlpha: true
+            } );
+            renderer.autoClearDepth = true;
+            renderer.autoClearStencil = true;
+            renderer.autoClearColor = false;
+            renderer.setClearColor( 0x000000, 0 );
+
+            this.scene = scene;
+            this.camera = camera;
+            this.renderer = renderer;
+            
+            // We listen for changes to the graphics collection of the layer
+            // and trigger the generation of new frames. A frame rendered while
+            // `needsUpdate` is true may cause an update of the vertex and
+            // index buffers.
+            var requestUpdate = function() {
+              this.rebuildScene();
+            }.bind(this);
+
+            this.watcher = watchUtils.on(
+              this,
+              "layer.graphics",
+              "change",
+              requestUpdate,
+              requestUpdate,
+              requestUpdate
+            );
+          },
+
+          // Called once a custom layer is removed from the map.layers collection and this layer view is destroyed.
+          detach: function() {
+            // Stop watching the `layer.graphics` collection.
+            this.watcher.remove();
+          },
+
+          // Called every time a frame is rendered.
+          render: function(renderParameters) {
+            var state = renderParameters.state;
+            var width = state.pixelRatio * state.size[0];
+            var height = state.pixelRatio * state.size[1];
+            this.camera.aspect = width / height;
+            this.camera.far = 10 * this.view.scale / 5000;
+            this.camera.updateProjectionMatrix();
+            
+            var camera = this.camera;
+            var view = this.view;
+            
+            this.graphicToObject.forEach(function (o, g) {
+              var screenPoint = view.toScreen({
+                x: g.geometry.longitude,
+                y: g.geometry.latitude,
+                spatialReference: {
+                  wkid: 4326
+                }
+              });
+              var vector = new THREE.Vector3(2 * screenPoint.x / width - 1, 1 - 2 * screenPoint.y / height, 1).unproject(camera);
+              o.position.x = vector.x;
+              o.position.y = vector.y;
+              o.position.z = vector.z;
+              o.rotation.z = -Math.PI * state.rotation / 180;
+            });
+            
+            this.renderer.state.reset();
+            this.renderer.render(this.scene, this.camera);
+          }
+        });
+        
+        var CustomLayer = GraphicsLayer.createSubclass({
+          createLayerView: function(view) {
+            // We only support MapView, so we only need to return a
+            // custom layer view for the `2d` case.
+            if (view.type === "2d") {
+              return new CustomLayerView2D({
+                view: view,
+                layer: this
+              });
+            }
+          }
+        });
+        
+        // Now we create the custom layer and we pass in the queried features.
+        var layer = new CustomLayer();
+
+        // Create the map and the view.
+        var map = new ArcGISMap({
+          basemap: "satellite",
+          layers: [layer]
+        });
+
+        var view = new MapView({
+          container: "viewDiv",
+          map: map,
+          center: [-73.971225, 40.774729],
+          scale: 1000,
+          spatialReference: {
+            wkid: 3857
+          }
+        });
+        
+        var treesDiv = document.getElementById("treesDiv");
+        var treeButtons = [];
+        var treeName = null;
+        
+        for (var tree of trees) {
+          var btnTree = document.createElement("div");
+          treeButtons.push(btnTree);
+          btnTree.innerHTML = tree.icon;
+          btnTree.className = "place-tree";
+          treesDiv.appendChild(btnTree);
+          btnTree.addEventListener("click", function (tree) { return function (event) {
+            treeName = null;
+            
+            for (const otherButton of treeButtons) {
+              if (otherButton !== event.target) {
+                otherButton.className = "place-tree";
+              } else {
+                if (event.target.className === "place-tree pressed") {
+                  event.target.className = "place-tree";
+                } else {
+                  event.target.className = "place-tree pressed";
+                  treeName = tree.name;
+                }
+              }
+            }
+          }; }(tree));
+        }
+        
+        view.on("click", function (event) {
+          layer.graphics.add({
+            geometry: event.mapPoint,
+            attributes: {
+              name: treeName
+            }
+          });
+        });
+        
+        view.ui.add("treesDiv", "top-right");
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+    <div id="treesDiv" class="esri-widget"></div>
+  </body>
+</html>
