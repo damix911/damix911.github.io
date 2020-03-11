@@ -106,6 +106,7 @@
             }
             
             this.graphicToObject.clear();
+            this.objectToGraphic.clear();
             
             while (this.objects.children.length > 0) {
               this.objects.remove(this.objects.children[0]);
@@ -123,9 +124,32 @@
               wrapper.add(o);
               this.objects.add(wrapper);
               this.graphicToObject.set(graphic, wrapper);
+              this.objectToGraphic.set(wrapper, graphic);
             }
             
             this.requestRender();
+          },
+
+          // Called by the map view or the popup view when hit testing is required.
+          hitTest: function(x, y) {
+            var raycaster = new THREE.Raycaster();
+            var width = this.view.state.pixelRatio * this.view.state.size[0];
+            var height = this.view.state.pixelRatio * this.view.state.size[1];
+            
+            raycaster.setFromCamera(new THREE.Vector3((x / width) * 2 - 1, -(y / height) * 2 + 1, -1), this.camera);
+            var hit = raycaster.intersectObjects(this.scene.children, true)[0].object;
+
+            while (hit.parent.type === "Group" && hit.parent.parent.type !== "Scene") {
+              hit = hit.parent;
+            }
+
+            if (!hit) {
+              return promiseUtils.reject();
+            }
+
+            var g = this.objectToGraphic.get(hit);
+            g.sourceLayer = this.layer;
+            return promiseUtils.resolve(g);
           },
 
           // Called once a custom layer is added to the map.layers collection and this layer view is instantiated.
@@ -152,6 +176,7 @@
             }
             
             this.graphicToObject = new Map();
+            this.objectToGraphic = new Map();
             this.objects = new THREE.Group();
             scene.add(this.objects);
             
@@ -244,7 +269,12 @@
         });
         
         // Now we create the custom layer and we pass in the queried features.
-        var layer = new CustomLayer();
+        var layer = new CustomLayer({
+          popupTemplate: {
+            title: "{name}",
+            content: "This is a {name}."
+          }
+        });
 
         // Create the map and the view.
         var map = new ArcGISMap({
@@ -291,12 +321,16 @@
         }
         
         view.on("click", function (event) {
-          layer.graphics.add({
-            geometry: event.mapPoint,
-            attributes: {
-              name: treeName
-            }
-          });
+          if (treeName) {
+            event.stopPropagation();
+
+            layer.graphics.add({
+              geometry: event.mapPoint,
+              attributes: {
+                name: treeName
+              }
+            });
+          }
         });
         
         view.ui.add("treesDiv", "top-right");
