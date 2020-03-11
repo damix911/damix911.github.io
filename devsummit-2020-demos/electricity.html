@@ -54,7 +54,7 @@
           aOffset: 1,
           aTexcoord: 2,
           aDistance: 3,
-          aUpright: 4,
+          aSeeds: 4,
 
           constructor: function() {
             // Geometrical transformations that must be recomputed
@@ -110,29 +110,53 @@
               "attribute vec2 a_offset;" +
               "attribute vec2 a_texcoord;" +
               "attribute float a_distance;" +
-              "attribute float a_upright;" +
-              "varying vec2 v_texcoord;" +
+              "attribute vec4 a_seeds;" +
+              "varying float v_position;" +
+              "varying float v_distance;" +
+              "varying vec4 v_seeds;" +
               "void main() {" +
-              "  vec3 transformedOffset = mix(u_rotation * vec3(a_offset, 0.0), vec3(a_offset, 0.0), a_upright);" +
+              "  vec3 transformedOffset = mix(u_rotation * vec3(a_offset, 0.0), vec3(a_offset, 0.0), 0.0);" +
               "  gl_Position.xy = (u_display * (u_transform * vec3(a_position, 1.0) + transformedOffset)).xy;" +
               "  gl_Position.zw = vec2(0.0, 1.0);" +
-              "  v_texcoord = a_texcoord;" +
+              "  v_position = a_texcoord.y;" +
+              "  v_distance = a_distance;" +
+              "  v_seeds = a_seeds;" +
               "}";
 
             var fragmentSource =
               "precision highp float;" +
-              "varying vec2 v_texcoord;" +
+              "varying float v_position;" +
+              "varying float v_distance;" +
+              "varying vec4 v_seeds;" +
               "uniform float u_currentTime;" +
+              `
+              
+              float getIntensity(float seed) {
+                float particle = 0.5 + 0.2 * sin((v_distance) / 1000.0 + seed + u_currentTime * seed / 100.0);
+                return exp(-(30.0 + 10.0 * sin(u_currentTime * 10.0)) * length(v_position - particle));
+              }
+
+              vec4 shadeIntensity(float intensity) {
+                float threshold = 1.0;
+                vec3 baseColor = vec3(0.0, 0.4, 0.8) * intensity;
+                float white = clamp(intensity - threshold, 0.0, 0.5);
+                return vec4(vec3(white) + baseColor, 0.0);
+              }
+              
+              ` +
               "void main() {" +
-              "  gl_FragColor = vec4(exp(-(5.0 + 4.0 * exp(sin(u_currentTime * 10.0))) * length(v_texcoord.y - 0.5)), 0.0, 0.0, 0.0);" +
+              "  float i = getIntensity(v_seeds.x) + getIntensity(v_seeds.y) + getIntensity(v_seeds.z) + getIntensity(v_seeds.w);" +
+              "  gl_FragColor = shadeIntensity(i);" +
               "}";
 
             var vertexShader = gl.createShader(gl.VERTEX_SHADER);
             gl.shaderSource(vertexShader, vertexSource);
             gl.compileShader(vertexShader);
+            console.log(gl.getShaderInfoLog(vertexShader));
             var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
             gl.shaderSource(fragmentShader, fragmentSource);
             gl.compileShader(fragmentShader);
+            console.log(gl.getShaderInfoLog(fragmentShader));
 
             // Create the shader program.
             this.program = gl.createProgram();
@@ -144,7 +168,7 @@
             gl.bindAttribLocation(this.program, this.aOffset, "a_offset");
             gl.bindAttribLocation(this.program, this.aTexcoord, "a_texcoord");
             gl.bindAttribLocation(this.program, this.aDistance, "a_distance");
-            gl.bindAttribLocation(this.program, this.aUpright, "a_upright");
+            gl.bindAttribLocation(this.program, this.aSeeds, "a_seeds");
 
             // Link.
             gl.linkProgram(this.program);
@@ -263,12 +287,12 @@
             gl.enableVertexAttribArray(this.aOffset);
             gl.enableVertexAttribArray(this.aTexcoord);
             gl.enableVertexAttribArray(this.aDistance);
-            gl.enableVertexAttribArray(this.aUpright);
-            gl.vertexAttribPointer(this.aPosition, 2, gl.FLOAT, false, 32, 0);
-            gl.vertexAttribPointer(this.aOffset, 2, gl.FLOAT, false, 32, 8);
-            gl.vertexAttribPointer(this.aTexcoord, 2, gl.FLOAT, false, 32, 16);
-            gl.vertexAttribPointer(this.aDistance, 1, gl.FLOAT, false, 32, 24);
-            gl.vertexAttribPointer(this.aUpright, 1, gl.FLOAT, false, 32, 28);
+            gl.enableVertexAttribArray(this.aSeeds);
+            gl.vertexAttribPointer(this.aPosition, 2, gl.FLOAT, false, 44, 0);
+            gl.vertexAttribPointer(this.aOffset, 2, gl.FLOAT, false, 44, 8);
+            gl.vertexAttribPointer(this.aTexcoord, 2, gl.FLOAT, false, 44, 16);
+            gl.vertexAttribPointer(this.aDistance, 1, gl.FLOAT, false, 44, 24);
+            gl.vertexAttribPointer(this.aSeeds, 4, gl.FLOAT, false, 44, 28);
             gl.enable(gl.BLEND);
             gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
             gl.disable(gl.CULL_FACE);
@@ -358,7 +382,7 @@
                     g.geometry,
                     g.attributes && g.attributes.width != null
                       ? g.attributes.width
-                      : 20
+                      : 40
                   ).then(function(mesh) {
                     return {
                       mesh: mesh,
@@ -435,7 +459,10 @@
             ) {
               var item = this.meshes[meshIndex];
               var mesh = item.mesh;
-              var upright = item.attributes && item.attributes.upright ? 1 : 0;
+              var seed1 = Math.floor(Math.random() * 256);
+              var seed2 = Math.floor(Math.random() * 256);
+              var seed3 = Math.floor(Math.random() * 256);
+              var seed4 = Math.floor(Math.random() * 256);
 
               for (var i = 0; i < mesh.indices.length; ++i) {
                 var idx = mesh.indices[i];
@@ -445,16 +472,17 @@
 
               for (var i = 0; i < mesh.vertices.length; ++i) {
                 var v = mesh.vertices[i];
-                vertexData[currentVertex * 8 + 0] =
-                  v.x - this.centerAtLastUpdate[0];
-                vertexData[currentVertex * 8 + 1] =
-                  v.y - this.centerAtLastUpdate[1];
-                vertexData[currentVertex * 8 + 2] = v.xOffset;
-                vertexData[currentVertex * 8 + 3] = v.yOffset;
-                vertexData[currentVertex * 8 + 4] = v.uTexcoord;
-                vertexData[currentVertex * 8 + 5] = v.vTexcoord;
-                vertexData[currentVertex * 8 + 6] = v.distance;
-                vertexData[currentVertex * 8 + 7] = upright;
+                vertexData[currentVertex * 11 + 0] = v.x - this.centerAtLastUpdate[0];
+                vertexData[currentVertex * 11 + 1] = v.y - this.centerAtLastUpdate[1];
+                vertexData[currentVertex * 11 + 2] = v.xOffset;
+                vertexData[currentVertex * 11 + 3] = v.yOffset;
+                vertexData[currentVertex * 11 + 4] = v.uTexcoord;
+                vertexData[currentVertex * 11 + 5] = v.vTexcoord;
+                vertexData[currentVertex * 11 + 6] = v.distance;
+                vertexData[currentVertex * 11 + 7] = seed1;
+                vertexData[currentVertex * 11 + 8] = seed2;
+                vertexData[currentVertex * 11 + 9] = seed3;
+                vertexData[currentVertex * 11 + 10] = seed4;
                 currentVertex++;
               }
             }
@@ -509,7 +537,7 @@
         var view = new MapView({
           container: "viewDiv",
           map: map,
-          scale: 100000,
+          scale: 200000,
           center: [-74.0431, 40.7178],
           spatialReference: {
             wkid: 3857
