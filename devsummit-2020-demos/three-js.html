@@ -95,6 +95,12 @@
             icon: "🌵",
             mesh: "https://damix911.github.io/assets/gltf/cactus-tmp.glb",
             transform: new THREE.Matrix4().makeScale(0.1, 0.1, 0.1)
+          },
+          {
+            name: "Esri Cube",
+            icon: "⬜",
+            mesh: "./esri-cube.glb",
+            transform: new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1, 0, 0), Math.PI / 2)
           }
         ];
         
@@ -180,9 +186,11 @@
             this.objects = new THREE.Group();
             scene.add(this.objects);
             
-            var light = new THREE.PointLight( 0xffffff, 10, 0 );
-            light.position.set( 0, 0, 0 );
-            scene.add( light );
+            var skyLight = new THREE.AmbientLight( 0x8080b0 );
+            scene.add( skyLight );
+            var sunLight = new THREE.DirectionalLight(0xffff80, 1.0);
+            sunLight.position.set( 2, 2, 5 );
+            scene.add( sunLight );
             
             var renderer = new THREE.WebGLRenderer( {
               context: this.context,
@@ -229,7 +237,8 @@
             var width = state.pixelRatio * state.size[0];
             var height = state.pixelRatio * state.size[1];
             this.camera.aspect = width / height;
-            this.camera.far = 10 * this.view.scale / 5000;
+            var fovyRadians = Math.PI * this.camera.fov / 180;
+            this.camera.far = (height * state.resolution) / (2 * Math.sin(fovyRadians / 2));
             this.camera.updateProjectionMatrix();
             
             var camera = this.camera;
@@ -247,6 +256,7 @@
               o.position.x = vector.x;
               o.position.y = vector.y;
               o.position.z = vector.z;
+              console.log(o.position.x, o.position.y, o.position.z, camera.far);
               o.rotation.z = -Math.PI * state.rotation / 180;
             });
             
