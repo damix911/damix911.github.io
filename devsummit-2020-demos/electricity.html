@@ -5,7 +5,6 @@
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
     <title>Electric Highways</title>
 
-    <link href="https://fonts.googleapis.com/css?family=Gruppo|Orbitron&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix.js"></script>
     <link rel="stylesheet" href="https://js.arcgis.com/4.15/esri/themes/dark-blue/main.css"/>
     <script src="https://js.arcgis.com/4.15/"></script>
@@ -55,9 +54,8 @@
           aTexcoord: 2,
           aDistance: 3,
           aSeeds: 4,
-          aSpread: 5,
-
-          EASE_LENGTH: 500,
+          aLength: 5,
+          aColor: 6,
 
           constructor: function() {
             // Geometrical transformations that must be recomputed
@@ -109,24 +107,29 @@
               "uniform mat3 u_transform;" +
               "uniform mat3 u_rotation;" +
               "uniform mat3 u_display;" +
+              "uniform float u_scale;" +
               "attribute vec2 a_position;" +
               "attribute vec2 a_offset;" +
               "attribute vec2 a_texcoord;" +
               "attribute float a_distance;" +
               "attribute vec4 a_seeds;" +
-              "attribute float a_spread;" +
+              "attribute float a_length;" +
+              "attribute vec3 a_color;" +
               "varying float v_position;" +
               "varying float v_distance;" +
               "varying vec4 v_seeds;" +
-              "varying float v_spread;" +
+              "varying float v_length;" +
+              "varying vec3 v_color;" +
+              "float getScaleAttenuation() { return min(u_scale < 2000000.0 ? 1.0 : u_scale / 2000000.0, 10.0); }" +
               "void main() {" +
-              "  vec3 transformedOffset = mix(u_rotation * vec3(a_offset, 0.0), vec3(a_offset, 0.0), 0.0);" +
+              "  vec3 transformedOffset = u_rotation * vec3(a_offset / getScaleAttenuation(), 0.0);" +
               "  gl_Position.xy = (u_display * (u_transform * vec3(a_position, 1.0) + transformedOffset)).xy;" +
               "  gl_Position.zw = vec2(0.0, 1.0);" +
               "  v_position = a_texcoord.y;" +
               "  v_distance = a_distance;" +
               "  v_seeds = a_seeds;" +
-              "  v_spread = a_spread;" +
+              "  v_length = a_length;" +
+              "  v_color = a_color;" +
               "}";
 
             var fragmentSource =
@@ -134,36 +137,39 @@
               "varying float v_position;" +
               "varying float v_distance;" +
               "varying vec4 v_seeds;" +
-              "varying float v_spread;" +
+              "varying vec3 v_color;" +
+              "varying float v_length;" +
               "uniform float u_currentTime;" +
-              `
-              
-              float getIntensity(float seed) {
-                float particle = 0.5 + 0.2 * v_spread * sin((v_distance) / 1000.0 + seed + u_currentTime * seed / 100.0);
-                return exp(-(30.0 + 10.0 * sin((u_currentTime + seed) * 10.0)) * length(v_position - particle)) * v_spread;
-              }
-
-              vec4 shadeIntensity(float intensity) {
-                float threshold = 1.0;
-                vec3 baseColor = vec3(0.0, 0.4, 0.8) * intensity;
-                float white = clamp(intensity - threshold, 0.0, 0.5);
-                return vec4(vec3(white) + baseColor, 0.0);
-              }
-              
-              ` +
+              "uniform float u_scale;" +
+              "float parabolic(float x) {" +
+              "  return -4.0 * pow(x - 0.5, 2.0) + 1.0;" +
+              "}" +
+              "" +
+              "float getScaleAttenuation() { return min(u_scale < 2000000.0 ? 1.0 : u_scale / 2000000.0, 10.0); }" +
+              "float getIntensity(float seed) {" +
+              "  float spread = parabolic(v_distance / v_length) / getScaleAttenuation();" +
+              "  float den = 2000.0 * u_scale / 1200000.0;" +
+              "  float particle = 0.5 + 0.2 * spread * sin((v_distance) / den + seed + u_currentTime * seed / 100.0);" +
+              "  return 1.5 * exp(-(30.0 + 10.0 * sin((u_currentTime + seed) * 10.0)) * length(v_position - particle)) * spread;" +
+              "}" +
+              "" +
+              "vec4 shadeIntensity(float intensity) {" +
+              "  vec3 baseColor = v_color * clamp(intensity, 0.0, 1.0);" +
+              "  float white = max(intensity - 1.0, 0.0);" +
+              "  return vec4(vec3(white) + baseColor, 0.0);" +
+              "}" +
               "void main() {" +
-              "  float i = getIntensity(v_seeds.x) + getIntensity(v_seeds.y) + getIntensity(v_seeds.z) + getIntensity(v_seeds.w);" +
-              "  gl_FragColor = shadeIntensity(i);" +
+              "  float diffuse = 0.3 * parabolic(v_position) * parabolic(v_distance / v_length);" +
+              "  float beams = getIntensity(v_seeds.x) + getIntensity(v_seeds.y) + getIntensity(v_seeds.z) + getIntensity(v_seeds.w);" +
+              "  gl_FragColor = shadeIntensity(diffuse + beams);" +
               "}";
 
             var vertexShader = gl.createShader(gl.VERTEX_SHADER);
             gl.shaderSource(vertexShader, vertexSource);
             gl.compileShader(vertexShader);
-            console.log(gl.getShaderInfoLog(vertexShader));
             var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
             gl.shaderSource(fragmentShader, fragmentSource);
             gl.compileShader(fragmentShader);
-            console.log(gl.getShaderInfoLog(fragmentShader));
 
             // Create the shader program.
             this.program = gl.createProgram();
@@ -176,6 +182,8 @@
             gl.bindAttribLocation(this.program, this.aTexcoord, "a_texcoord");
             gl.bindAttribLocation(this.program, this.aDistance, "a_distance");
             gl.bindAttribLocation(this.program, this.aSeeds, "a_seeds");
+            gl.bindAttribLocation(this.program, this.aLength, "a_length");
+            gl.bindAttribLocation(this.program, this.aColor, "a_color");
 
             // Link.
             gl.linkProgram(this.program);
@@ -192,6 +200,7 @@
             this.uRotation = gl.getUniformLocation(this.program, "u_rotation");
             this.uDisplay = gl.getUniformLocation(this.program, "u_display");
             this.uCurrentTime = gl.getUniformLocation(this.program, "u_currentTime");
+            this.uScale = gl.getUniformLocation(this.program, "u_scale");
 
             // Create the vertex and index buffer. They are initially empty. We need to track the
             // size of the index buffer because we use indexed drawing.
@@ -288,6 +297,7 @@
             gl.uniformMatrix3fv(this.uRotation, false, this.rotation);
             gl.uniformMatrix3fv(this.uDisplay, false, this.display);
             gl.uniform1f(this.uCurrentTime, performance.now() / 1000.0);
+            gl.uniform1f(this.uScale, state.scale);
             gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.indexBuffer);
             gl.enableVertexAttribArray(this.aPosition);
@@ -295,13 +305,15 @@
             gl.enableVertexAttribArray(this.aTexcoord);
             gl.enableVertexAttribArray(this.aDistance);
             gl.enableVertexAttribArray(this.aSeeds);
-            gl.enableVertexAttribArray(this.aSpread);
-            gl.vertexAttribPointer(this.aPosition, 2, gl.FLOAT, false, 48, 0);
-            gl.vertexAttribPointer(this.aOffset, 2, gl.FLOAT, false, 48, 8);
-            gl.vertexAttribPointer(this.aTexcoord, 2, gl.FLOAT, false, 48, 16);
-            gl.vertexAttribPointer(this.aDistance, 1, gl.FLOAT, false, 48, 24);
-            gl.vertexAttribPointer(this.aSeeds, 4, gl.FLOAT, false, 48, 28);
-            gl.vertexAttribPointer(this.aSpread, 1, gl.FLOAT, false, 48, 44);
+            gl.enableVertexAttribArray(this.aLength);
+            gl.enableVertexAttribArray(this.aColor);
+            gl.vertexAttribPointer(this.aPosition, 2, gl.FLOAT, false, 60, 0);
+            gl.vertexAttribPointer(this.aOffset, 2, gl.FLOAT, false, 60, 8);
+            gl.vertexAttribPointer(this.aTexcoord, 2, gl.FLOAT, false, 60, 16);
+            gl.vertexAttribPointer(this.aDistance, 1, gl.FLOAT, false, 60, 24);
+            gl.vertexAttribPointer(this.aSeeds, 4, gl.FLOAT, false, 60, 28);
+            gl.vertexAttribPointer(this.aLength, 1, gl.FLOAT, false, 60, 44);
+            gl.vertexAttribPointer(this.aColor, 3, gl.FLOAT, false, 60, 48);
             gl.enable(gl.BLEND);
             gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
             gl.disable(gl.CULL_FACE);
@@ -317,102 +329,16 @@
           },
 
           processGraphic: function(g) {
-            switch (g.geometry.type) {
-              case "extent":
-                this.promises.push(
-                  this.tessellateExtent(g.geometry).then(function(mesh) {
-                    return {
-                      mesh: mesh,
-                      attributes: g.attributes,
-                      symbol: g.symbol
-                    };
-                  })
-                );
-                break;
-              case "point":
-                this.promises.push(
-                  this.tessellatePoint(g.geometry, {
-                    x:
-                      g.attributes && g.attributes.x != null
-                        ? g.attributes.x
-                        : -16,
-                    y:
-                      g.attributes && g.attributes.y != null
-                        ? g.attributes.y
-                        : 16,
-                    width:
-                      g.attributes && g.attributes.width != null
-                        ? g.attributes.width
-                        : 32,
-                    height:
-                      g.attributes && g.attributes.height != null
-                        ? g.attributes.height
-                        : 32
-                  }).then(function(mesh) {
-                    return {
-                      mesh: mesh,
-                      attributes: g.attributes,
-                      symbol: g.symbol
-                    };
-                  })
-                );
-                break;
-              case "multipoint":
-                this.promises.push(
-                  this.tessellateMultipoint(g.geometry, {
-                    x:
-                      g.attributes && g.attributes.x != null
-                        ? g.attributes.x
-                        : -16,
-                    y:
-                      g.attributes && g.attributes.y != null
-                        ? g.attributes.y
-                        : 16,
-                    width:
-                      g.attributes && g.attributes.width != null
-                        ? g.attributes.width
-                        : 32,
-                    height:
-                      g.attributes && g.attributes.height != null
-                        ? g.attributes.height
-                        : 32
-                  }).then(function(mesh) {
-                    return {
-                      mesh: mesh,
-                      attributes: g.attributes,
-                      symbol: g.symbol
-                    };
-                  })
-                );
-                break;
-              case "polyline":
-                this.promises.push(
-                  this.tessellatePolyline(
-                    g.geometry,
-                    g.attributes && g.attributes.width != null
-                      ? g.attributes.width
-                      : 40
-                  ).then(function(mesh) {
-                    return {
-                      mesh: mesh,
-                      attributes: g.attributes,
-                      symbol: g.symbol
-                    };
-                  })
-                );
-                break;
-              case "polygon":
-                this.promises.push(
-                  this.tessellatePolygon(g.geometry).then(function(mesh) {
-                    return {
-                      mesh: mesh,
-                      attributes: g.attributes,
-                      symbol: g.symbol
-                    };
-                  })
-                );
-                break;
-            }
+            this.promises.push(
+              this.tessellatePolyline(g.geometry, 30)
+              .then(function(mesh) {
+                return {
+                  mesh: mesh,
+                  attributes: g.attributes,
+                  symbol: g.symbol
+                };
+              })
+            );
           },
 
           // Called internally from render().
@@ -456,10 +382,15 @@
             var indexCount = this.meshes.reduce(function(indexCount, item) {
               return indexCount + item.mesh.indices.length;
             }, 0);
-            var vertexData = new Float32Array(vertexCount * 8);
+            var vertexData = new Float32Array(vertexCount * 15);
             var indexData = new Uint32Array(indexCount);
             var currentVertex = 0;
             var currentIndex = 0;
+            var seed = 1;
+            function random() {
+              var x = Math.sin(seed++) * 10000;
+              return x - Math.floor(x);
+            }
 
             for (
               var meshIndex = 0;
@@ -468,10 +399,11 @@
             ) {
               var item = this.meshes[meshIndex];
               var mesh = item.mesh;
-              var seed1 = Math.floor(Math.random() * 256);
-              var seed2 = Math.floor(Math.random() * 256);
-              var seed3 = Math.floor(Math.random() * 256);
-              var seed4 = Math.floor(Math.random() * 256);
+              var seed1 = Math.floor(random() * 256);
+              var seed2 = Math.floor(random() * 256);
+              var seed3 = Math.floor(random() * 256);
+              var seed4 = Math.floor(random() * 256);
+              var color = [0, 0.5, 1];
 
               for (var i = 0; i < mesh.indices.length; ++i) {
                 var idx = mesh.indices[i];
@@ -479,43 +411,27 @@
                 currentIndex++;
               }
 
-              // console.log("----------------------------------------------------");
-              // let s = "";
+              var length = mesh.vertices.length && mesh.vertices[mesh.vertices.length - 1].distance;
 
               for (var i = 0; i < mesh.vertices.length; ++i) {
                 var v = mesh.vertices[i];
-                var spread;
-
-                if (v.distance < this.EASE_LENGTH) {
-                  spread = 1 - (this.EASE_LENGTH - v.distance) / this.EASE_LENGTH;
-                } else if (v.distance > mesh.vertices[mesh.vertices.length - 1].distance - this.EASE_LENGTH) {
-                  spread = 1 - (v.distance - (mesh.vertices[mesh.vertices.length - 1].distance - this.EASE_LENGTH)) / this.EASE_LENGTH;
-                } else {
-                  spread = 1;
-                }
-
-                // s += " " + spread;
-
-                // console.log(spread);
-
-                vertexData[currentVertex * 12 + 0] = v.x - this.centerAtLastUpdate[0];
-                vertexData[currentVertex * 12 + 1] = v.y - this.centerAtLastUpdate[1];
-                vertexData[currentVertex * 12 + 2] = v.xOffset;
-                vertexData[currentVertex * 12 + 3] = v.yOffset;
-                vertexData[currentVertex * 12 + 4] = v.uTexcoord;
-                vertexData[currentVertex * 12 + 5] = v.vTexcoord;
-                vertexData[currentVertex * 12 + 6] = v.distance;
-                vertexData[currentVertex * 12 + 7] = seed1;
-                vertexData[currentVertex * 12 + 8] = seed2;
-                vertexData[currentVertex * 12 + 9] = seed3;
-                vertexData[currentVertex * 12 + 10] = seed4;
-                vertexData[currentVertex * 12 + 11] = spread;
+                vertexData[currentVertex * 15 + 0] = v.x - this.centerAtLastUpdate[0];
+                vertexData[currentVertex * 15 + 1] = v.y - this.centerAtLastUpdate[1];
+                vertexData[currentVertex * 15 + 2] = v.xOffset;
+                vertexData[currentVertex * 15 + 3] = v.yOffset;
+                vertexData[currentVertex * 15 + 4] = v.uTexcoord;
+                vertexData[currentVertex * 15 + 5] = v.vTexcoord;
+                vertexData[currentVertex * 15 + 6] = v.distance;
+                vertexData[currentVertex * 15 + 7] = seed1;
+                vertexData[currentVertex * 15 + 8] = seed2;
+                vertexData[currentVertex * 15 + 9] = seed3;
+                vertexData[currentVertex * 15 + 10] = seed4;
+                vertexData[currentVertex * 15 + 11] = length;
+                vertexData[currentVertex * 15 + 12] = color[0];
+                vertexData[currentVertex * 15 + 13] = color[1];
+                vertexData[currentVertex * 15 + 14] = color[2];
                 currentVertex++;
               }
-
-              // console.log(s);
-
-              // console.log("----------------------------------------------------");
             }
 
             // Upload data to the GPU
@@ -543,20 +459,19 @@
           }
         });
 
+
         // We use a feature layer to load the geometry to pass to the custom layer.
         const highways = new FeatureLayer({
-          url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Freeway_System/FeatureServer/1"
+          url: "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Freeway_System/FeatureServer/2"
         });
         
         const query = highways.createQuery();
         query.where = "1=1";
+        query.outSpatialReference = { wkid: 3857 };
         highways.queryFeatures(query).then(function(result) {
-          for (var f of result.features) {
-            f.geometry.rings = (f.geometry.paths[0] && [f.geometry.paths[0]]) || [];
-          }
           layer.graphics = result.features;
         });
-        
+
         // Now we create the custom layer and we pass in the queried features.
         var layer = new CustomLayer({
           graphics: []
@@ -571,14 +486,12 @@
         var view = new MapView({
           container: "viewDiv",
           map: map,
-          scale: 200000,
-          center: [-74.0431, 40.7178],
+          center: [-74.0, 40.7],
+          zoom: 12,
           spatialReference: {
             wkid: 3857
           }
         });
-
-        // Scranton: [-75.65, 41.45]
       });
     </script>
   </head>

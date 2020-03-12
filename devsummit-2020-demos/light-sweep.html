@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
-    <title>Light wave effect</title>
+    <title>Light Sweep</title>
 
     <link href="https://fonts.googleapis.com/css?family=Gruppo|Orbitron&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix.js"></script>
@@ -147,30 +147,34 @@
 
       uniform sampler2D u_mask;
       uniform sampler2D u_halo;
+      uniform sampler2D u_hexagons;
       uniform float u_progress;
+      uniform vec2 u_size;
 
       varying vec2 v_texcoord;
       
       float wave(float x, float s, float c) {
         return 1.0 / (1.0 + exp(-s * (x - c)));
       }
-      
-      float squares(float u, float v) {
-        float ho = exp(-30.0 * abs(0.5 - (u * 30.0 - floor(u * 30.0))));
-        float ve = exp(-30.0 * abs(0.5 - (v * 40.0 - floor(v * 40.0))));
-        return ho + ve;
+
+      float parabolic(float x) {
+        return -4.0 * pow(x - 0.5, 2.0) + 1.0;
       }
 
       void main(void) {
+        vec4 sampledHexagons = texture2D(u_hexagons, v_texcoord * u_size / vec2(256.0, 256.0));
+        vec2 offset = 256.0 * (sampledHexagons.rg - 0.5);
+        float border = sampledHexagons.b;
+        float flashTime = sampledHexagons.a;
         float masked = texture2D(u_mask, v_texcoord).r;
-      
+
         vec4 dark = (wave(u_progress, 30.0, 0.2) - 0.4 * wave(u_progress, 30.0, 0.8)) * vec4(0.0, 0.0, 0.0, 0.8);
       
         float linePosition = 2.0 - 3.0 * u_progress;
       
         if (v_texcoord.y > linePosition) {
           if (masked > 0.5) {
-            dark = vec4(vec3(squares(v_texcoord.x, v_texcoord.y)), 0.0) * (1.0 - wave(u_progress, 30.0, 0.7));
+            dark = vec4(vec3(border) + 0.3 * parabolic(u_progress) * exp(-10.0 * abs(flashTime - u_progress)), 0.0) * (1.0 - wave(u_progress, 30.0, 0.7));
           }
         }
       
@@ -243,6 +247,11 @@
           }
         }
 
+        function destroyFramebuffer(gl, fb) {
+          gl.deleteFramebuffer(fb.framebuffer);
+          gl.deleteTexture(fb.color);
+        }
+
         // Resize a framebuffer if needed, by destroying and recreating it, or return
         // it unchanged.
         function resizeFramebuffer(gl, fb, width, height) {
@@ -272,13 +281,11 @@
           var vs = gl.createShader(gl.VERTEX_SHADER);
           gl.shaderSource(vs, vsSrc);
           gl.compileShader(vs);
-          console.log(gl.getShaderInfoLog(vs));
 
           var fsSrc = getShaderSource(fsId);
           var fs = gl.createShader(gl.FRAGMENT_SHADER);
           gl.shaderSource(fs, fsSrc);
           gl.compileShader(fs);
-          console.log(gl.getShaderInfoLog(fs));
 
           var program = gl.createProgram();
           gl.attachShader(program, vs);
@@ -289,7 +296,6 @@
           }
 
           gl.linkProgram(program);
-          console.log(gl.getProgramInfoLog(program));
 
           var uniformLocations = {};
 
@@ -341,6 +347,7 @@
               }.bind(this));
               promiseUtils.all(this.promises).then(
                 function(meshes) {
+                  this._progress = 0;
                   this.meshes = meshes;
                   this.needsUpdate = true;
                   this.requestRender();
@@ -359,8 +366,6 @@
 
             var requestRender = this.requestRender.bind(this);
 
-            this.stageWatcher = this.watch("layer.stage", requestRender);
-            
             this._progress = 0;
           },
 
@@ -409,13 +414,28 @@
             }, [
               "u_mask",
               "u_halo",
-              "u_progress"
+              "u_hexagons",
+              "u_progress",
+              "u_size"
             ]);
 
             this.quadBuffer = gl.createBuffer();
             gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
             gl.bufferData(gl.ARRAY_BUFFER, new Int8Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
+
+            const image = new Image();
+            image.src = "hexagons.png";
+            image.addEventListener("load", function () {
+              this.hexagonsImage = image;
+            }.bind(this));
+
+            this.hexagonsTexture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, this.hexagonsTexture);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
           },
 
           resizeFramebuffers(gl, width, height) {
@@ -441,16 +461,21 @@
             gl.deleteProgram(this.edgesProgram);
             gl.deleteProgram(this.blurProgram);
             gl.deleteProgram(this.lightingProgram);
+            gl.deleteTexture(this.hexagonsTexture);
+            destroyFramebuffer(gl, this.featuresFbo);
+            destroyFramebuffer(gl, this.edgesFbo);
+            destroyFramebuffer(gl, this.blurFbo);
           },
 
           // Called every time a frame is rendered.
           render: function(renderParameters) {
-            if (this.layer.stage === 1) {
-              return;
-            }
-
             var gl = renderParameters.context;
             var state = renderParameters.state;
+
+            if (this.hexagonsImage) {
+              gl.bindTexture(gl.TEXTURE_2D, this.hexagonsTexture);
+              gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.hexagonsImage);
+            }
 
             // Update vertex positions. This may trigger an update of
             // the vertex coordinates contained in the vertex buffer.
@@ -497,13 +522,9 @@
             this.resizeFramebuffers(gl, Math.round(state.pixelRatio * state.size[0]), Math.round(state.pixelRatio * state.size[1]));
 
             // Draw the features onto the initial frame buffer
-            if (this.layer.stage === 2) {
-              this.bindRenderTarget();
-            } else {
-              gl.bindFramebuffer(gl.FRAMEBUFFER, this.featuresFbo.framebuffer);
-              gl.clearColor(0, 0, 0, 0);
-              gl.clear(gl.COLOR_BUFFER_BIT);
-            }
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.featuresFbo.framebuffer);
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
             gl.useProgram(this.featuresProgram.program);
             gl.uniformMatrix3fv(this.featuresProgram.uniforms.u_transform, false, this.transform);
             gl.uniformMatrix3fv(this.featuresProgram.uniforms.u_display, false, this.display);
@@ -521,18 +542,11 @@
               gl.UNSIGNED_SHORT,
               0
             );
-            if (this.layer.stage === 2) {
-              return;
-            }
 
             // Edge detection
-            if (this.layer.stage === 3) {
-              this.bindRenderTarget();
-            } else {
-              gl.bindFramebuffer(gl.FRAMEBUFFER, this.edgesFbo.framebuffer);
-              gl.clearColor(0, 0, 0, 0);
-              gl.clear(gl.COLOR_BUFFER_BIT);
-            }
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.edgesFbo.framebuffer);
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
             gl.useProgram(this.edgesProgram.program);
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, this.featuresFbo.color);
@@ -543,18 +557,11 @@
             gl.vertexAttribPointer(this.edgesProgram.attributes.a_position, 2, gl.BYTE, false, 2, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-            if (this.layer.stage === 3) {
-              return;
-            }
 
             // Blur
-            if (this.layer.stage === 4) {
-              this.bindRenderTarget();
-            } else {
-              gl.bindFramebuffer(gl.FRAMEBUFFER, this.blurFbo.framebuffer);
-              gl.clearColor(0, 0, 0, 0);
-              gl.clear(gl.COLOR_BUFFER_BIT);
-            }
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.blurFbo.framebuffer);
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
             gl.useProgram(this.blurProgram.program);
             gl.activeTexture(gl.TEXTURE0);
             gl.bindTexture(gl.TEXTURE_2D, this.edgesFbo.color);
@@ -565,9 +572,6 @@
             gl.vertexAttribPointer(this.blurProgram.attributes.a_position, 2, gl.BYTE, false, 2, 0);
             gl.bindBuffer(gl.ARRAY_BUFFER, null);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-            if (this.layer.stage === 4) {
-              return;
-            }
 
             // Lighting
             this.bindRenderTarget();
@@ -576,9 +580,13 @@
             gl.bindTexture(gl.TEXTURE_2D, this.featuresFbo.color);
             gl.uniform1i(this.lightingProgram.uniforms.u_mask, 0);
             gl.uniform1f(this.lightingProgram.uniforms.u_progress, this._progress);
+            gl.uniform2f(this.lightingProgram.uniforms.u_size, this.featuresFbo.width, this.featuresFbo.height);
             gl.activeTexture(gl.TEXTURE1);
             gl.bindTexture(gl.TEXTURE_2D, this.blurFbo.color);
             gl.uniform1i(this.lightingProgram.uniforms.u_halo, 1);
+            gl.activeTexture(gl.TEXTURE2);
+            gl.bindTexture(gl.TEXTURE_2D, this.hexagonsTexture);
+            gl.uniform1i(this.lightingProgram.uniforms.u_hexagons, 2);
             gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
             gl.enableVertexAttribArray(this.lightingProgram.attributes.a_position);
             gl.vertexAttribPointer(this.lightingProgram.attributes.a_position, 2, gl.BYTE, false, 2, 0);
@@ -673,17 +681,6 @@
 
         // Subclass the custom layer view from GraphicsLayer.
         var CustomLayer = GraphicsLayer.createSubclass({
-          properties: {
-            // The full rendering algorithm is in 5 stages; the stage property
-            // of the layer enables the user to interrupt it at an earlier stage
-            // to see the intermediate result up to that point.
-            stage: {}
-          },
-
-          constructor: function () {
-            this.stage = 5;
-          },
-
           createLayerView: function(view) {
             // We only support MapView, so we only need to return a
             // custom layer view for the `2d` case.
@@ -710,10 +707,6 @@
           query.geometry = p;
           query.spatialRelationship = "intersects";
           countries.queryFeatures(query).then(function(result) {
-            // const geometry = result.features[0].geometry;
-            // layer.graphics = geometry;
-            // view.goTo(geometry);
-
             const feature = result.features[0];
             infoTitle.innerText = feature.attributes.COUNTRY;
             infoContent.innerHTML = "Area: " + Math.floor(feature.attributes.Shape__Area / 1000000) + " kmq" + "<br>" + "Length: " + Math.floor(feature.attributes.Shape__Length / 1000) + " km";
