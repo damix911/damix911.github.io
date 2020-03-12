@@ -71,6 +71,9 @@
         MapView,
         BaseLayerViewGL2D
       ) {
+        var duckMat = new THREE.Matrix4().makeRotationX(Math.PI / 2);
+        duckMat.scale(new THREE.Vector3(20, 20, 20));
+
         var trees = [
           {
             name: "Deciduous",
@@ -97,10 +100,10 @@
             transform: new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1, 0, 0), Math.PI / 2)
           },
           {
-            name: "Esri Cube",
-            icon: "⬜",
-            mesh: "./esri-cube.glb",
-            transform: new THREE.Matrix4().makeRotationAxis(new THREE.Vector3(1, 0, 0), Math.PI / 2)
+            name: "Duck",
+            icon: "🦆",
+            mesh: "./Duck.glb",
+            transform: duckMat
           }
         ];
         
