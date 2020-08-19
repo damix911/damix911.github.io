@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <title>RenderModel Test</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix.js"></script>
+    <script>
+      dojoConfig = {
+        packages: [
+          {
+            name: "rendermodel",
+            location: "/rendermodel/dist/"
+          },
+          {
+            name: "easytiles",
+            location: "/easytiles/dist/"
+          }
+        ]
+      };
+    </script>
+    <script src="https://js.arcgis.com/4.17/"></script>
+
+    <script type="x-vertex/x-shader" id="vs-sprite">
+      attribute vec2 a_position;
+      attribute vec2 a_offset;
+      attribute vec2 a_texcoord;
+
+      uniform mat4 u_transform;
+      
+      varying vec2 v_texcoord;
+
+      void main(void) {
+        gl_Position = u_transform * vec4(a_position + a_offset, 0.0, 1.0);
+        v_texcoord = a_texcoord;
+      }
+    </script>
+
+    <script type="x-fragment/x-shader" id="fs-sprite">
+      precision mediump float;
+
+      varying vec2 v_texcoord;
+
+      uniform sampler2D u_texture;
+
+      void main(void) {
+        vec4 color = texture2D(u_texture, v_texcoord);
+        color.rgb *= color.a;
+        gl_FragColor = color;
+      }
+    </script>
+
+    <script>
+      require(["rendermodel/core", "rendermodel/webgl"], function (core, webgl) {
+        const root = new webgl.RenderingContext();
+        const rendering = new core.Group(root);
+        const resources = new core.Group(root);
+        const clear = new webgl.Clear(rendering, [0.2, 0.3, 0.5, 1], 1);
+        const blueJay = new webgl.Texture2D(resources, "https://damix-it-assets.s3-us-west-1.amazonaws.com/textures/blue_jay_bird_nature.jpg");
+        // const blueJay = new webgl.Texture2D(resources, "/dist/assets/textures/blue_jay_bird_nature.jpg");
+        const spriteProgram = new webgl.Program(
+          resources,
+          document.getElementById("vs-sprite").innerText,
+          document.getElementById("fs-sprite").innerText,
+          { a_position: 0, a_offset: 1, a_texcoord: 2 },
+          [ "u_texture", "u_transform" ]
+        );
+        const sprites = new webgl.SpriteBatch(resources, 100);
+        const drawSprites = new webgl.DrawSprites(clear, spriteProgram, blueJay, sprites);
+
+        function render() {
+          const { width, height } = root;
+          mat4.identity(drawSprites.transform);
+          mat4.scale(drawSprites.transform, drawSprites.transform, [height / width, 1, 1]);
+          mat4.rotateZ(drawSprites.transform, drawSprites.transform, performance.now() / 1000);
+
+          sprites.instances = [
+            { x: -0.5, y: 0.5 * Math.sin(performance.now() / 700.0), size: 0.5, rotation: performance.now() / 50 },
+            { x: 0, y: 0.5 * Math.sin(performance.now() / 1000.0), size: 0.2, rotation: performance.now() / 80 },
+            { x: 0.5, y: 0.5 * Math.sin(performance.now() / 1200.0), size: 0.1, rotation: performance.now() / 140 }
+          ];
+          
+          root.process();
+          requestRender();
+        }
+
+        function requestRender() {
+          requestAnimationFrame(render);
+        }
+  
+        requestRender();
+      });
+    </script>
+  </head>
+
+  <body>
+  </body>
+</html>
