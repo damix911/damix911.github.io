@@ -378,7 +378,7 @@
 
                 return canvas;
               });
-              const overlay2 = new webgl.Texture2D(resources, "/apps/assets/textures/light-osprey.png", () => {
+              const overlay2 = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/light-osprey.png", () => {
                 if (!this.selectedBird) {
                   return null;
                 }
@@ -804,7 +804,7 @@
               const root = new webgl.RenderingContext(null, gl);
               const rendering = new core.Group(root);
               const resources = new core.Group(root);
-              const bird = new webgl.Texture2D(resources, "/apps/assets/textures/light-osprey.png");
+              const bird = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/light-osprey.png");
 
               const abundanceProgram = new webgl.Program(
                 resources,
