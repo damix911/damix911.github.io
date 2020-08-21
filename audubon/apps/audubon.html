@@ -345,9 +345,9 @@
               const root = new webgl.RenderingContext(null, gl);
               const rendering = new core.Group(root);
               const resources = new core.Group(root);
-              const bird = new webgl.Texture2D(resources, "/apps/assets/textures/light-osprey.png");
-              const triangle = new webgl.Texture2D(resources, "/apps/assets/textures/triangle.png");
-              const overlay1 = new webgl.Texture2D(resources, "/apps/assets/textures/triangle.png", () => {
+              const bird = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/light-osprey.png");
+              const triangle = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/triangle.png");
+              const overlay1 = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/triangle.png", () => {
                 if (!this.selectedBird) {
                   return null;
                 }
