@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>Load a basic WebMap | Sample | ArcGIS API for JavaScript 4.16</title>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+
+    <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.16/esri/themes/light/main.css"
+    />
+
+    <script src="https://js.arcgis.com/4.16/"></script>
+
+    <script>
+      require(["esri/views/MapView", "esri/WebMap", "esri/layers/Layer"], function (
+        MapView,
+        WebMap,
+        Layer
+      ) {
+        // https://www.arcgis.com/home/item.html?id=9722fb85cc6b43b3ad19e5fe99982953
+        
+        var webmap = new WebMap({
+          portalItem: {
+            id: "9722fb85cc6b43b3ad19e5fe99982953"
+          }
+        });
+        
+        var view = new MapView({
+          map: webmap,
+          container: "viewDiv"
+        });
+
+        const hillshadeLayerId = 'bf4560325aba4d33bcb2a8582be23972'
+        Layer.fromPortalItem({ portalItem: { id: hillshadeLayerId } }).then(layer => {
+          view.map.basemap.baseLayers.add(layer, 0);
+        });
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+  </body>
+</html>
