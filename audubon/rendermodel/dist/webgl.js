@@ -481,9 +481,13 @@ define(["require", "exports", "./core"], function (require, exports, core_1) {
     class Draw extends core_1.SimpleNode {
         constructor(parent) {
             super(parent);
+            this.visible = true;
         }
         process(state) {
             const { gl } = state;
+            if (!this.visible) {
+                return true;
+            }
             if (!state.mesh) {
                 return false;
             }

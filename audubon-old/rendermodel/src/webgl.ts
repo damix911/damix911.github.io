@@ -608,10 +608,6 @@ export class Draw extends SimpleNode<WebGLState> {
   process(state: WebGLState): boolean {
     const { gl } = state;
 
-    if (!this.visible) {
-      return true;
-    }
-
     if (!state.mesh) {
       return false;
     }
@@ -620,6 +616,4 @@ export class Draw extends SimpleNode<WebGLState> {
 
     return true;
   }
-
-  visible = true;
 }
