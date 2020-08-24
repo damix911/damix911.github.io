@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="initial-scale=1,maximum-scale=1,user-scalable=no"
+    />
+    <title>
+      Custom WebGL layer view | Sample | ArcGIS API for JavaScript 4.16
+    </title>
+
+    <script type="x-vertex/x-shader" id="vs-quad">
+      attribute vec2 a_position;
+
+      void main(void) {
+        gl_Position = vec4(a_position, 0.0, 1.0);
+      }
+    </script>
+
+    <script type="x-fragment/x-shader" id="fs-quad">
+      precision mediump float;
+
+      void main(void) {
+        gl_FragColor = vec4(0.0, 0.0, 0.1, 0.8);
+      }
+    </script>
+
+    <script type="x-vertex/x-shader" id="vs-sprite">
+      attribute vec2 a_position;
+      attribute vec2 a_offset;
+      attribute vec2 a_texcoord;
+      attribute vec4 a_color;
+      attribute float a_id;
+
+      uniform mat4 u_transform;
+      uniform float u_time;
+      
+      varying vec2 v_texcoord;
+      varying vec4 v_color;
+
+      void main(void) {
+        gl_Position = u_transform * vec4(a_position + a_offset, 0.0, 1.0);
+        
+        float a = 1.1 * cos(u_time + a_id);
+        vec2 texcoord = a_texcoord;
+        float v = texcoord.x - 0.5;
+        texcoord.x = 0.5 + v / cos(a);
+        
+        v_texcoord = texcoord;
+        v_color = a_color;
+      }
+    </script>
+
+    <script type="x-fragment/x-shader" id="fs-sprite">
+      precision mediump float;
+
+      varying vec2 v_texcoord;
+      varying vec4 v_color;
+
+      uniform sampler2D u_texture;
+
+      void main(void) {
+        vec4 color = texture2D(u_texture, v_texcoord);
+        color *= v_color;
+        color.rgb *= color.a;
+        gl_FragColor = color;
+
+        //gl_FragColor += 0.05;
+      }
+    </script>
+
+    <script type="x-vertex/x-shader" id="vs-overlay">
+      attribute vec2 a_position;
+      attribute vec2 a_texcoord;
+
+      uniform mat4 u_transform;
+      uniform vec2 u_anchor;
+      
+      varying vec2 v_texcoord;
+
+      void main(void) {
+        gl_Position = u_transform * vec4(a_position + u_anchor, 0.0, 1.0);
+        v_texcoord = a_texcoord;
+      }
+    </script>
+
+    <script type="x-fragment/x-shader" id="fs-overlay">
+      precision mediump float;
+
+      varying vec2 v_texcoord;
+
+      uniform sampler2D u_texture;
+
+      void main(void) {
+        vec4 color = texture2D(u_texture, v_texcoord);
+        color.rgb *= color.a;
+        gl_FragColor = color;
+      }
+    </script>
+
+    <script type="x-vertex/x-shader" id="vs-paths">
+      precision highp float;
+      uniform mat4 u_transform;
+      uniform mat4 u_extrude;
+      uniform mat4 u_display;
+      attribute vec2 a_position;
+      attribute vec2 a_offset;
+      attribute vec2 a_distance;
+      attribute float a_side;
+      attribute float a_id;
+      varying vec2 v_distance;
+      varying float v_side;
+      varying float v_id;
+      void main() {
+        gl_Position.xy = (u_display * (u_transform * vec4(a_position, 0.0, 1.0) + u_extrude * vec4(a_offset, 0.0, 0.0))).xy;
+        //gl_Position.xy = a_position;
+        gl_Position.zw = vec2(0.0, 1.0);
+        v_distance = a_distance;
+        v_side = a_side;
+        v_id = a_id;
+      }
+    </script>
+
+    <script type="x-vertex/x-shader" id="fs-paths">
+      precision highp float;
+      uniform float u_progress;
+      uniform float u_selected;
+      varying vec2 v_distance;
+      varying float v_side;
+      varying float v_id;
+      void main() {
+        float a = v_distance[0] / (v_distance[1] * u_progress);
+        if (a > 1.0) {
+          a = 0.0;
+        }
+
+        a *= 0.5;
+
+        if (u_selected != -1.0) {
+          if (u_selected != v_id) {
+            a *= 0.1;
+          }
+        }
+
+        //a *= mod(floor(v_distance[0] / 80000.0), 2.0);
+        vec4 color = vec4(1.0, 1.0, 1.0, a);
+        color.rgb *= color.a;
+        gl_FragColor = color;
+      }
+    </script>
+
+    <script type="x-vertex/x-shader" id="vs-abundance">
+      precision highp float;
+      uniform mat4 u_transform;
+      uniform mat4 u_extrude;
+      uniform mat4 u_display;
+      uniform float u_time;
+      uniform float u_progress;
+      attribute vec2 a_center;
+      attribute float a_radius;
+      attribute vec2 a_offset;
+      attribute vec2 a_texcoord;
+      attribute float a_peak;
+      attribute float a_dev;
+      varying vec2 v_texcoord;
+      varying float v_opacity;
+      void main() {
+        float angle = -u_time;
+        float co = cos(angle);
+        float si = sin(angle);
+        vec2 position = a_center + a_radius * vec2(co, si);
+        mat4 rotation = mat4(vec4(co, -si, 0.0, 0.0), vec4(si, co, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+        gl_Position.xy = (u_display * (u_transform * vec4(position, 0.0, 1.0) + u_extrude * rotation * vec4(a_offset, 0.0, 0.0))).xy;
+        gl_Position.zw = vec2(0.0, 1.0);
+        
+
+        float a = 1.1 * cos(u_time);
+        vec2 texcoord = a_texcoord;
+        float v = texcoord.x - 0.5;
+        texcoord.x = 0.5 + v / cos(a);
+
+        v_texcoord = texcoord;
+        v_opacity = exp(-(u_progress - a_peak) * (u_progress - a_peak) / (a_dev * a_dev));
+        v_opacity *= 0.5;
+      }
+    </script>
+
+    <script type="x-vertex/x-shader" id="fs-abundance">
+      precision mediump float;
+
+      varying vec2 v_texcoord;
+      varying float v_opacity;
+
+      uniform sampler2D u_texture;
+
+      void main(void) {
+        vec4 color = texture2D(u_texture, v_texcoord);
+        color.a *= v_opacity;
+        color.rgb *= color.a;
+        gl_FragColor = color;
+      }
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix.js"></script>
+
+    <link
+      rel="stylesheet"
+      href="https://js.arcgis.com/4.17/esri/themes/dark-blue/main.css"
+    />
+    <script>
+      dojoConfig = {
+        packages: [
+          {
+            name: "rendermodel",
+            location: "/audubon/rendermodel/dist/"
+          }
+        ]
+      };
+    </script>
+    <script src="https://js.arcgis.com/4.17/"></script>
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        padding: 0;
+        margin: 0;
+        height: 100%;
+        width: 100%;
+      }
+
+      html, body {
+        background-color: rgba(1, 18, 34, 1);
+      }
+
+      .slider {
+        width: 400px;
+        height: 60px;
+      }
+    </style>
+
+    <script>
+      require([
+        "esri/Map",
+        "esri/Basemap",
+
+        "esri/core/watchUtils",
+        "esri/core/promiseUtils",
+
+        "esri/geometry/support/webMercatorUtils",
+
+        "esri/layers/VectorTileLayer",
+        "esri/layers/GraphicsLayer",
+        "esri/layers/FeatureLayer",
+        "esri/layers/Layer",
+
+        "esri/geometry/SpatialReference",
+        "esri/geometry/Point",
+        "esri/geometry/Polyline",
+
+        "esri/views/MapView",
+
+        "esri/widgets/Slider",
+        "esri/widgets/Expand",
+
+        "esri/views/2d/layers/BaseLayerViewGL2D",
+
+        "esri/geometry/support/webMercatorUtils",
+
+        "esri/widgets/BasemapGallery",
+        "esri/widgets/BasemapLayerList",
+        "esri/widgets/LayerList",
+        "esri/geometry/projection",
+
+        "rendermodel/core",
+        "rendermodel/webgl",
+        "rendermodel/audubon"
+      ], function (
+        EsriMap,
+        Basemap,
+        watchUtils,
+        promiseUtils,
+        webMercatorUtils,
+        VectorTileLayer,
+        GraphicsLayer,
+        FeatureLayer,
+        Layer,
+        SpatialReference,
+        Point,
+        Polyline,
+        MapView,
+        Slider,
+        Expand,
+        BaseLayerViewGL2D,
+        webMercatorUtils,
+        BasemapGallery,
+        BasemapLayerList,
+        LayerList,
+        projection,
+        core,
+        webgl,
+        audubon
+      ) {
+        const LambertAzimutalEqualArea = {
+          wkt: `PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["GCS_WGS_1984",DATUM["D_unknown",SPHEROID["WGS84",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["false_easting",0.0],PARAMETER["false_northing",0.0],PARAMETER["central_meridian",-90.0],PARAMETER["latitude_of_origin",15.0],UNIT["Meter",1.0]]`
+        };
+
+        projection.load().then(() => {
+          function convertCoords(x, y) {
+            const point = new Point({
+              x, y, spatialReference: {
+                wkid: 4326
+              }
+            });
+            const outSR = SpatialReference.fromJSON(LambertAzimutalEqualArea);
+            const projected = projection.project(point, outSR);
+            // console.log
+            return [projected.x, projected.y];
+            // return webMercatorUtils.lngLatToXY(x, y);
+          }
+
+          var CustomLayerView2D = BaseLayerViewGL2D.createSubclass({
+            attach: function () {
+              const promises = this.layer.individuals.map((individual) => {
+                const polyline = new Polyline({
+                  paths: [
+                    individual.path.map((point) => point.coords)
+                  ],
+                  spatialReference: LambertAzimutalEqualArea
+                });
+
+                const promise = this.tessellatePolyline(polyline, 2);
+                
+                return promise;
+              });
+
+              promiseUtils.all(promises).then((meshes) => {
+                this.generatePolylines(meshes);
+              });
+
+
+
+
+              const gl = this.context;
+
+              const root = new webgl.RenderingContext(null, gl);
+              const rendering = new core.Group(root);
+              const resources = new core.Group(root);
+              const bird = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/light-osprey.png");
+              const triangle = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/triangle.png");
+              const overlay1 = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/triangle.png", () => {
+                if (!this.selectedBird) {
+                  return null;
+                }
+
+                const canvas = document.createElement("canvas");
+                canvas.width = 128;
+                canvas.height = 64;
+                const ctx = canvas.getContext("2d");
+
+                ctx.lineWidth = 2;
+
+                ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+                ctx.fillRect(0, 32, 128, 32);
+
+                ctx.strokeStyle = "white";
+                ctx.strokeRect(0, 32, 128, 32);
+
+                
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.font = "12px sans-serif";
+
+                ctx.fillStyle = "white";
+                ctx.fillText(this.selectedBird.name + " starting point", 64, 48);
+
+                // ctx.strokeStyle = "rgba(220, 220, 250, 1)";
+                // ctx.strokeText(this.selectedBird.name + " starting point", 64, 16);
+
+                return canvas;
+              });
+              const overlay2 = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/light-osprey.png", () => {
+                if (!this.selectedBird) {
+                  return null;
+                }
+
+                const canvas = document.createElement("canvas");
+                canvas.width = 128;
+                canvas.height = 64;
+                const ctx = canvas.getContext("2d");
+
+                ctx.lineWidth = 2;
+
+                ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+                ctx.fillRect(0, 0, 128, 64);
+
+                ctx.strokeStyle = "white";
+                ctx.strokeRect(0, 0, 128, 64);
+
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.font = "18px sans-serif";
+
+                ctx.fillStyle = "white";
+                ctx.fillText(this.selectedBird.name, 64, 16);
+
+                const info = this.selectedBirdInfo;
+
+                ctx.font = "13px sans-serif";
+                ctx.fillStyle = "white";
+                ctx.fillText(info, 64, 40);
+                
+                // ctx.strokeStyle = "rgba(220, 220, 250, 1)";
+                // ctx.strokeText(this.selectedBird.name, 64, 16);
+                
+                return canvas;
+              });
+              const spriteProgram = new webgl.Program(
+                resources,
+                document.getElementById("vs-sprite").innerText,
+                document.getElementById("fs-sprite").innerText,
+                { a_position: 0, a_offset: 1, a_texcoord: 2, a_color: 3, a_id: 4 },
+                [ { name: "u_texture", type: "sampler2D" }, { name: "u_transform", type: "mat4" }, { name: "u_time", type: "float" } ]
+              );
+              const overlayProgram = new webgl.Program(
+                resources,
+                document.getElementById("vs-overlay").innerText,
+                document.getElementById("fs-overlay").innerText,
+                { a_position: 0, a_texcoord: 1 },
+                [ { name: "u_texture", type: "sampler2D" }, { name: "u_transform", type: "mat4" }, { name: "u_anchor", type: "vec2" } ]
+              );
+              const pathsProgram = new webgl.Program(
+                resources,
+                document.getElementById("vs-paths").innerText,
+                document.getElementById("fs-paths").innerText,
+                { a_position: 0, a_offset: 1, a_distance: 2, a_side: 3, a_id: 4 },
+                [ { name: "u_transform", type: "mat4" }, { name: "u_extrude", type: "mat4" }, { name: "u_display", type: "mat4" }, { name: "u_progress", type: "float" }, { name: "u_selected", type: "float" } ]
+              );
+              const quadProgram = new webgl.Program(
+                resources,
+                document.getElementById("vs-quad").innerText,
+                document.getElementById("fs-quad").innerText,
+                { a_position: 0 },
+                []
+              );
+
+              this.root = root;
+
+              const quadMesh = new webgl.Mesh(resources, [
+                {
+                  size: 2,
+                  type: 5126,
+                  normalized: false
+                }
+              ], 4, 6, 35044);
+              const qVertexData = new Float32Array(quadMesh.vertexData.buffer);
+              qVertexData.set([
+                -1, -1,
+                 1, -1,
+                -1,  1,
+                 1,  1
+              ]);
+              const qIndexData = quadMesh.indexData;
+              qIndexData[0] = 0;
+              qIndexData[1] = 1;
+              qIndexData[2] = 2;
+              qIndexData[3] = 1;
+              qIndexData[4] = 3;
+              qIndexData[5] = 2;
+              quadMesh.indexCount = 6;
+              quadMesh.upload();
+
+              const bindQuadProgram = new webgl.SetProgram(rendering, quadProgram);
+              const bindQuadMesh = new webgl.SetMesh(bindQuadProgram, quadMesh);
+              this.drawQuad = new webgl.Draw(bindQuadMesh);
+
+              this.pathsMesh = new webgl.Mesh(resources, [
+                {
+                  size: 2,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 2,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 2,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 1,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 1,
+                  type: 5126,
+                  normalized: false
+                }
+              ], 4000, 6000, 35044);
+              const bindPathsProgram = new webgl.SetProgram(rendering, pathsProgram);
+              const bindPathsMesh = new webgl.SetMesh(bindPathsProgram, this.pathsMesh);
+              this.pathsUniforms = new webgl.SetUniforms(bindPathsMesh);
+              this.drawPaths = new webgl.Draw(this.pathsUniforms);
+
+              this.birds = new audubon.SpriteBatch(resources, 100);
+              this.drawBirds = new audubon.DrawSprites(rendering, spriteProgram, bird, this.birds);
+              this.triangles = new audubon.SpriteBatch(resources, 100);
+              this.drawTriangles = new audubon.DrawSprites(rendering, spriteProgram, triangle, this.triangles);
+              const overlayMesh = new webgl.Mesh(resources, [
+                {
+                  size: 2,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 2,
+                  type: 5126,
+                  normalized: false
+                }
+              ], 4, 6, 35044);
+              const vertexData = new Float32Array(overlayMesh.vertexData.buffer);
+              vertexData.set([
+                -64, -32, 0, 0,
+                  64, -32, 1, 0,
+                -64, -96, 0, 1,
+                  64, -96, 1, 1
+              ]);
+              const indexData = overlayMesh.indexData;
+              indexData[0] = 0;
+              indexData[1] = 1;
+              indexData[2] = 2;
+              indexData[3] = 1;
+              indexData[4] = 3;
+              indexData[5] = 2;
+              overlayMesh.indexCount = 6;
+              overlayMesh.upload();
+              const bindOverlayProgram = new webgl.SetProgram(rendering, overlayProgram);
+
+              const bindTextures1 = new webgl.SetTextures(bindOverlayProgram, { 0: overlay1 });
+              const bindOverlay1Mesh = new webgl.SetMesh(bindTextures1, overlayMesh);
+              this.bindOverlay1Uniforms = new webgl.SetUniforms(bindOverlay1Mesh);
+              this.drawOverlay1 = new webgl.Draw(this.bindOverlay1Uniforms);
+
+              const bindTextures2 = new webgl.SetTextures(bindOverlayProgram, { 0: overlay2 });
+              const bindOverlay2Mesh = new webgl.SetMesh(bindTextures2, overlayMesh);
+              this.bindOverlay2Uniforms = new webgl.SetUniforms(bindOverlay2Mesh);
+              this.drawOverlay2 = new webgl.Draw(this.bindOverlay2Uniforms);
+
+              this.overlay1 = overlay1;
+              this.overlay2 = overlay2;
+
+              // this.bindOverlay2Uniforms = new webgl.SetUniforms(bindOverlayMesh);
+              // this.drawOverlay2 = new webgl.Draw(this.bindOverlay2Uniforms);
+            },
+
+            // 783200.6224562983, 912563.3203887745, -10, -10, 0, 100, +1, 1, 0, 0, 1, 0, 1, 0, 1,
+            // 783200.6224562983, 912563.3203887745,  10, -10, 0, 100, -1, 1, 0, 0, 1, 0, 1, 0, 1,
+            // 783200.6224562983, 912563.3203887745, -10, 10, 0, 100, +1, 1, 0, 0, 1, 0, 1, 0, 1,
+            // 783200.6224562983, 912563.3203887745,  10, 10, 0, 100, -1, 1, 0, 0, 1, 0, 1, 0, 1
+
+            generatePolylines: function (meshes) {
+              const vtxs = new Float32Array(this.pathsMesh.vertexData.buffer);
+              const idxs = this.pathsMesh.indexData;
+
+              let vertexCursor = 0;
+              let vertexCount = 0;
+              let indexCount = 0;
+
+              let id = 0;
+
+              for (const m of meshes) {
+                for (const i of m.indices) {
+                  idxs[indexCount++] = vertexCount + i;
+                }
+
+                for (const v of m.vertices) {
+                  vtxs[vertexCursor++] = v.x;
+                  vtxs[vertexCursor++] = v.y;
+                  vtxs[vertexCursor++] = v.xOffset;
+                  vtxs[vertexCursor++] = v.yOffset;
+                  vtxs[vertexCursor++] = v.distance;
+                  vtxs[vertexCursor++] = m.vertices[m.vertices.length - 1].distance;
+                  vtxs[vertexCursor++] = 0;
+                  vtxs[vertexCursor++] = id;
+                  vertexCount++;
+                }
+
+                id++;
+              }
+
+              this.pathsMesh.indexCount = indexCount;
+              this.pathsMesh.upload();
+            },
+
+            render: function (renderParams) {
+              this.overlay1.upload();
+              this.overlay2.upload();
+
+              const { state } = renderParams;
+              const { root, birds, drawBirds, triangles, drawTriangles, bindOverlayUniforms } = this;
+              const { width, height } = root;
+              
+              mat4.identity(drawBirds.transform);
+              mat4.scale(drawBirds.transform, drawBirds.transform, [2 / width, -2 / height, 1]);
+              mat4.translate(drawBirds.transform, drawBirds.transform, [-width / 2, -height / 2, 0]);
+              drawBirds.time = performance.now() / 1000.0;
+
+              mat4.identity(drawTriangles.transform);
+              mat4.scale(drawTriangles.transform, drawTriangles.transform, [2 / width, -2 / height, 1]);
+              mat4.translate(drawTriangles.transform, drawTriangles.transform, [-width / 2, -height / 2, 0]);
+              drawTriangles.time = 2;
+
+              const transform = mat4.create();
+              mat4.identity(transform);
+              mat4.scale(transform, transform, [2 / width, -2 / height, 1]);
+              mat4.translate(transform, transform, [-width / 2, -height / 2, 0]);
+
+              const birdInstances = new Array(this.layer.individuals.length);
+              const triangleInstances = new Array(this.layer.individuals.length);
+            
+              let iMin = -1;
+              let dMin = 10000;
+
+              for (let i = 0; i < this.layer.individuals.length; i++) {
+                const individual = this.layer.individuals[i];
+
+                let from = individual.path[0];
+                let to = individual.path[1];
+
+                for (let j = 0; j < individual.path.length; j++) {
+                  to = individual.path[j];
+                  if (this.layer.timestamp < individual.path[j].timestamp) {
+                    break;
+                  }
+                  from = to;
+                }
+
+                let x, y, r, s;
+
+                if (from !== to) {
+                  const f = (this.layer.timestamp - from.timestamp) / (to.timestamp - from.timestamp);
+                  const dx = to.coords[0] - from.coords[0];
+                  const dy = to.coords[1] - from.coords[1];
+                  x = from.coords[0] + f * dx;
+                  y = from.coords[1] + f * dy;
+                  r = state.rotation - 90 - 180 * Math.atan2(dy, dx) / Math.PI;
+                  if (from === individual.path[0]) {
+                    s = f;
+                  } else if (to === individual.path[individual.path.length - 1]) {
+                    s = 1 - f;
+                  } else {
+                    s = 1;
+                  }
+                } else {
+                  x = to.coords[0];
+                  y = to.coords[1];
+                  r = 0;
+                  s = 0;
+                }
+
+                const screenCoords = [0, 0];
+                state.toScreen(screenCoords, x, y);
+
+                let dist = Math.sqrt((screenCoords[0] - this.layer.hover[0]) * (screenCoords[0] - this.layer.hover[0]) + (screenCoords[1] - this.layer.hover[1]) * (screenCoords[1] - this.layer.hover[1]));
+                if (dist < 20 && (iMin === -1 || dist < dMin)) {
+                  iMin = i;
+                  dMin = dist;
+                }
+
+
+                const repro = projection.project(new Point({x, y, spatialReference: LambertAzimutalEqualArea}), SpatialReference.WGS84);
+                const lat = repro.y;
+                const lng = repro.x;
+
+                birdInstances[i] = {
+                  x: screenCoords[0],
+                  y: screenCoords[1],
+                  size: 40 * s,
+                  rotation: r,
+                  color: (from.certain && to.certain) ? [0.9, 0.9, 1, 1] : [1, 1, 0.8, 1],
+                  id: individual.id,
+                  location: (from.certain && to.certain) ? `[${Math.floor(lat * 100) / 100}, ${Math.floor(lng * 100) / 100}]` : "Location uncertain!"
+                };
+
+                //////////////////////////////////////
+
+                state.toScreen(screenCoords, individual.path[0].coords[0], individual.path[0].coords[1]);
+
+                dist = Math.sqrt((screenCoords[0] - this.layer.hover[0]) * (screenCoords[0] - this.layer.hover[0]) + (screenCoords[1] - this.layer.hover[1]) * (screenCoords[1] - this.layer.hover[1]));
+                if (dist < 20 && (iMin === -1 || dist < dMin)) {
+                  iMin = i;
+                  dMin = dist;
+                }
+
+                triangleInstances[i] = {
+                  x: screenCoords[0],
+                  y: screenCoords[1],
+                  size: 15,
+                  rotation: 180,
+                  color: [1, 1, 1, 1],
+                  id: 0 /* TODO */
+                };
+              }
+              
+              if (iMin !== -1) {
+                this.drawQuad.visible = true;
+                this.selectedBird = this.layer.individuals[iMin];
+                this.selectedBirdInfo = birdInstances[iMin].location;
+
+                for (let i = 0; i < birdInstances.length; i++) {
+                  if (i !== iMin) {
+                    birdInstances[i].color[3] = 0.2;
+                  } else {
+                    birdInstances[i].size = 120;
+                  }
+                }
+
+                for (let i = 0; i < triangleInstances.length; i++) {
+                  if (i !== iMin) {
+                    triangleInstances[i].color[3] = 0.2;
+                  }
+                }
+
+                this.bindOverlay1Uniforms.values = {
+                  u_transform: transform,
+                  u_anchor: [triangleInstances[iMin].x, triangleInstances[iMin].y],
+                  u_texture: 0
+                };
+
+                this.bindOverlay2Uniforms.values = {
+                  u_transform: transform,
+                  u_anchor: [birdInstances[iMin].x, birdInstances[iMin].y],
+                  u_texture: 0
+                };
+              } else {
+                this.drawQuad.visible = false;
+
+                this.bindOverlay1Uniforms.values = {
+                  u_transform: transform,
+                  u_anchor: [-1000, -1000],
+                  u_texture: 0
+                };
+
+                this.bindOverlay2Uniforms.values = {
+                  u_transform: transform,
+                  u_anchor: [-1000, -1000],
+                  u_texture: 0
+                };
+              }
+              
+              birds.instances = birdInstances;
+              triangles.instances = triangleInstances;
+
+
+              //////////////////////////////////
+              const geo = mat4.create();
+              mat4.identity(geo);
+              mat4.translate(
+                geo,
+                geo,
+                [state.size[0] / 2, state.size[1] / 2, 0]
+              );
+              mat4.rotateZ(
+                geo,
+                geo,
+                (Math.PI * state.rotation) / 180
+              );
+              mat4.scale(geo, geo, [1 / state.resolution, -1 / state.resolution, 1]);
+              mat4.translate(geo, geo, [-state.center[0], -state.center[1], 0]);
+              
+              const extrude = mat4.create();
+              mat4.identity(extrude);
+              mat4.rotateZ(
+                extrude,
+                extrude,
+                (Math.PI * state.rotation) / 180
+              );
+              
+              this.pathsUniforms.values = {
+                u_transform: geo,
+                u_extrude: extrude,
+                u_display: transform,
+                u_progress: this.layer.timestamp / 500,
+                u_selected: iMin
+              };
+              //////////////////////////////////
+
+              
+              root.process();
+              this.requestRender();
+            },
+
+            detach: function () {
+            }
+          });
+
+          var AbundanceLayerView2D = BaseLayerViewGL2D.createSubclass({
+            attach: function () {
+              const gl = this.context;
+
+              const root = new webgl.RenderingContext(null, gl);
+              const rendering = new core.Group(root);
+              const resources = new core.Group(root);
+              const bird = new webgl.Texture2D(resources, "/audubon/apps/assets/textures/light-osprey.png");
+
+              const abundanceProgram = new webgl.Program(
+                resources,
+                document.getElementById("vs-abundance").innerText,
+                document.getElementById("fs-abundance").innerText,
+                { a_center: 0, a_radius: 1, a_offset: 2, a_texcoord: 3, a_peak: 4, a_dev: 5 },
+                [ { name: "u_texture", type: "sampler2D" }, { name: "u_transform", type: "mat4" }, { name: "u_display", type: "mat4" }, { name: "u_extrude", type: "mat4" }, { name: "u_time", type: "float" }, { name: "u_progress", type: "float" } ]
+              );
+
+              const vd = [];
+              const id = [];
+
+              for (let i = 0; i < this.layer.abundances.length; i++) {
+                const x = this.layer.abundances[i].coords[0];
+                const y = this.layer.abundances[i].coords[1];
+
+                vd.push(
+                  x, y, 100000, -10, -10, 0, 0, this.layer.abundances[i].peak, 0.1,
+                  x, y, 100000,  10, -10, 1, 0, this.layer.abundances[i].peak, 0.1,
+                  x, y, 100000, -10,  10, 0, 1, this.layer.abundances[i].peak, 0.1,
+                  x, y, 100000,  10,  10, 1, 1, this.layer.abundances[i].peak, 0.1
+                );
+
+                id.push(i * 4 + 0, i * 4 + 1, i * 4 + 2, i * 4 + 1, i * 4 + 3, i * 4 + 2)
+              }
+
+              const mesh = new webgl.Mesh(resources, [
+                {
+                  size: 2,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 1,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 2,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 2,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 1,
+                  type: 5126,
+                  normalized: false
+                },
+                {
+                  size: 1,
+                  type: 5126,
+                  normalized: false
+                }
+              ], 10000, 30000, 35044);
+              const vertexData = new Float32Array(mesh.vertexData.buffer);
+              vertexData.set(vd);
+              const indexData = mesh.indexData;
+              indexData.set(id);
+              mesh.indexCount = id.length;
+              mesh.upload();
+
+              const bindProgram = new webgl.SetProgram(rendering, abundanceProgram);
+              const bindTexture = new webgl.SetTextures(bindProgram, { 0: bird });
+              const bindMesh = new webgl.SetMesh(bindTexture, mesh);
+              this.bindUniforms = new webgl.SetUniforms(bindMesh);
+              this.draw = new webgl.Draw(this.bindUniforms);
+
+              this.root = root;
+            },
+
+            detach: function () {
+
+            },
+
+            render: function (renderParams) {
+              const { state } = renderParams;
+              const { root, bindUniforms, draw } = this;
+              const { width, height } = root;
+
+              const transform = mat4.create();
+              mat4.identity(transform);
+              mat4.scale(transform, transform, [2 / width, -2 / height, 1]);
+              mat4.translate(transform, transform, [-width / 2, -height / 2, 0]);
+              
+              const geo = mat4.create();
+              mat4.identity(geo);
+              mat4.translate(
+                geo,
+                geo,
+                [state.size[0] / 2, state.size[1] / 2, 0]
+              );
+              mat4.rotateZ(
+                geo,
+                geo,
+                (Math.PI * state.rotation) / 180
+              );
+              mat4.scale(geo, geo, [1 / state.resolution, -1 / state.resolution, 1]);
+              mat4.translate(geo, geo, [-state.center[0], -state.center[1], 0]);
+              
+              const extrude = mat4.create();
+              mat4.identity(extrude);
+              mat4.rotateZ(
+                extrude,
+                extrude,
+                (Math.PI * state.rotation) / 180
+              );
+              
+              this.bindUniforms.values = {
+                u_transform: geo,
+                u_extrude: extrude,
+                u_display: transform,
+                u_progress: this.layer.timestamp / 500,
+                u_texture: 0,
+                u_time: performance.now() / 1000.0
+              };
+              //////////////////////////////////
+
+              
+              root.process();
+              this.requestRender();
+            }
+          });
+
+          var CustomLayer = GraphicsLayer.createSubclass({
+            createLayerView: function (view) {
+              if (view.type === "2d") {
+                return new CustomLayerView2D({
+                  view: view,
+                  layer: this
+                });
+              }
+            }
+          });
+
+          var AbundanceLayer = GraphicsLayer.createSubclass({
+            createLayerView: function (view) {
+              if (view.type === "2d") {
+                return new AbundanceLayerView2D({
+                  view: view,
+                  layer: this
+                });
+              }
+            }
+          });
+
+          const individuals = [];
+          const abundances = [];
+
+          const RADIUS = 3;
+
+          function random() {
+            return Math.random() - 0.5;
+          }
+          
+          for (let i = 0; i < 20; i++) {
+            const path = [
+              {
+                coords: convertCoords(-118.2437 + RADIUS * random(), 34.0522 + RADIUS * random()),
+                certain: true,
+                timestamp: 0 + Math.random() * 10
+              },
+              {
+                coords: convertCoords(-115.1398 + RADIUS * random(), 36.1699 + RADIUS * random()),
+                certain: true,
+                timestamp: 60 + Math.random() * 10
+              },
+              {
+                coords: convertCoords(-112.0740 + RADIUS * random(), 33.4484 + RADIUS * random()),
+                certain: true,
+                timestamp: 110 + Math.random() * 10
+              },
+              {
+                coords: convertCoords(-106.4850 + RADIUS * random(), 31.7619 + RADIUS * random()),
+                certain: true,
+                timestamp: 170 + Math.random() * 10
+              },
+              {
+                coords: convertCoords(-96.7970 + RADIUS * random(), 32.7767 + RADIUS * random()),
+                certain: true,
+                timestamp: 200 + random() * 20
+              },
+              {
+                coords: convertCoords(-90.1994 + RADIUS * random(), 38.6270 + RADIUS * random()),
+                certain: false,
+                timestamp: 300 + random() * 20
+              },
+              {
+                coords: convertCoords(-87.6298 + RADIUS * random(), 41.8781 + RADIUS * random()),
+                certain: true,
+                timestamp: 350 + random() * 20
+              },
+              {
+                coords: convertCoords(-83.0458 + RADIUS * random(), 42.3314 + RADIUS * random()),
+                certain: true,
+                timestamp: 400 + random() * 20
+              },
+              {
+                coords: convertCoords(-79.3832 + RADIUS * random(), 43.6532 + RADIUS * random()),
+                certain: true,
+                timestamp: 450 + random() * 20
+              },
+              {
+                coords: convertCoords(-74.0060 + RADIUS * random(), 40.7128 + RADIUS * random()),
+                certain: true,
+                timestamp: 500 - Math.random() * 10
+              }
+            ];
+            
+            individuals.push({
+              id: i,
+              name: "Bird #" + (i + 1),
+              path
+            });
+
+            let totalLength = 0;
+            for (let i = 1; i < path.length; i++) {
+              const dx = path[i].coords[0] - path[i - 1].coords[0];
+              const dy = path[i].coords[1] - path[i - 1].coords[1];
+              totalLength += Math.sqrt(dx * dx + dy * dy);
+            }
+
+            let length = 0;
+            
+            for (let j = 0; j < path.length; j++) {
+              const p = path[j];
+
+              if (j > 0) {
+                const dx = path[j].coords[0] - path[j - 1].coords[0];
+                const dy = path[j].coords[1] - path[j - 1].coords[1];
+                length += Math.sqrt(dx * dx + dy * dy);
+              }
+
+              for (let k = 0; k < 5; k++) {
+                abundances.push({
+                  coords: [p.coords[0] + (Math.random() - 0.5) * 500000, p.coords[1] + (Math.random() - 0.5) * 500000],
+                  peak: length / totalLength
+                });
+              }
+            }
+          }
+
+          // console.log("LA HAVANA", convertCoords(-82.3666, 23.1136));
+
+          var layer = new CustomLayer({
+            title: "Tagged individuals",
+            hover: [0, 0],
+            timestamp: 0,
+            individuals,
+            // spatialReference: {
+            //   wkt: `PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["GCS_WGS_1984",DATUM["D_unknown",SPHEROID["WGS84",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["false_easting",0.0],PARAMETER["false_northing",0.0],PARAMETER["central_meridian",-90.0],PARAMETER["latitude_of_origin",15.0],UNIT["Meter",1.0]]`
+            // }
+          });
+
+          var birds = [];
+
+          var abundance = new AbundanceLayer({
+            title: "Relative abundance",
+            timestamp: 0,
+            abundances,
+            visible: false
+            // spatialReference: {
+            //   wkt: `PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["GCS_WGS_1984",DATUM["D_unknown",SPHEROID["WGS84",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["false_easting",0.0],PARAMETER["false_northing",0.0],PARAMETER["central_meridian",-90.0],PARAMETER["latitude_of_origin",15.0],UNIT["Meter",1.0]]`
+            // }
+          });
+
+          var basemap = new Basemap();
+
+          var vtl = new VectorTileLayer({
+            title: "Basemap",
+            url: "https://tiles.arcgis.com/tiles/u2Q4oAfciDZpDAD8/arcgis/rest/services/Audubon_Migration_Basemap/VectorTileServer"
+          });
+
+          vtl.opacity = 0.1;
+
+          var map = new EsriMap({
+            basemap,
+            // layers: [layer]
+            layers: [vtl, abundance, layer]
+          });
+
+          const hillshadeLayerId = 'bf4560325aba4d33bcb2a8582be23972'
+          Layer.fromPortalItem({ portalItem: { id: hillshadeLayerId } }).then(hillShade => {
+            // basemap.baseLayers.add(hillShade);
+            // basemap.baseLayers.add(vtl);
+            hillShade.opacity = 0.1;
+
+            map.layers.add(hillShade, 1);
+            // map.layers.add(vtl, 0);
+          });
+
+          const queryLayer = new FeatureLayer({
+            url: "https://services.arcgis.com/V6ZHFr6zdgNZuVG0/arcgis/rest/services/us_zip_education_2016/FeatureServer/0",
+            spatialReference: 102100,
+            minScale: 0,
+            maxScale: 0
+          });
+
+          function addPolygonLayer(title, x, y, distance, color) {
+            queryLayer.queryFeatures({
+              geometry: {
+                type: "point",
+                spatialReference: {
+                  wkid: 4326
+                },
+                x,
+                y
+              },
+              distance,
+              units: "miles",
+              spatialRelationship: "intersects",
+              returnGeometry: true,
+              returnCentroid: true,
+              outFields: ["OBJECTID"]
+            }).then(function (featureSet) {
+              const inMemoryFeatureLayer = new FeatureLayer({
+                title,
+                renderer: {
+                  type: "simple",
+                  symbol: {
+                    type: "simple-fill",
+                    color,
+                    outline: null
+                    // outline: {
+                    //   width: "3px",
+                    //   color
+                    // }
+                  }
+                },
+                source: featureSet.features,
+                  fields: [{
+                    name: "OBJECTID",
+                    alias: "OBJECTID",
+                    type: "oid"
+                  }],
+                objectIdField: "OBJECTID",
+                geometryType: "polygon"
+              });
+
+              map.layers.add(inMemoryFeatureLayer, 1);
+            });
+          }
+
+          addPolygonLayer("Breeding", -118.2437, 34.0522, 200, [40, 80, 40, 0.7]);
+          addPolygonLayer("Non-Breeding", -74.0060, 40.7128, 200, [40, 40, 80, 0.7]);
+          
+          var view = new MapView({
+            container: "viewDiv",
+            map: map,
+            center: {
+              x: -722004,
+              y: 2661316,
+              spatialReference: LambertAzimutalEqualArea
+            },
+            scale: 20000000,
+            // spatialReference: {
+            //   wkt: `PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["GCS_WGS_1984",DATUM["D_unknown",SPHEROID["WGS84",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["false_easting",0.0],PARAMETER["false_northing",0.0],PARAMETER["central_meridian",-90.0],PARAMETER["latitude_of_origin",15.0],UNIT["Meter",1.0]]`
+            // }
+          });
+
+          setTimeout(() => {
+            console.log(view.spatialReference.wkt);
+          }, 5000);
+
+          view.on("click", (evt) => {
+            console.log(evt);
+            console.log(view.center);
+          });
+
+          view.on("pointer-move", (evt) => {
+            layer.hover = [evt.x, evt.y];
+          });
+
+          const slider = new Slider({
+            view: view,
+            container: "slider",
+            min: 0,
+            max: 500,
+            values: [ 0 ],
+            snapOnClickEnabled: false,
+            visibleElements: {
+              labels: true,
+              rangeLabels: true
+            }
+          });
+
+          slider.on("thumb-drag", function (event) {
+            layer.timestamp = event.value;
+            abundance.timestamp = event.value;
+          });
+
+          view.ui.add("controls", "bottom-right");
+
+          // var basemapGallery = new BasemapGallery({
+          //   view: view
+          // });
+          // view.ui.add(basemapGallery, {
+          //   position: "top-right"
+          // });
+
+          // var basemapLayerList = new BasemapLayerList({
+          //   view: view
+          // });
+          // view.ui.add(basemapLayerList, {
+          //   position: "top-right"
+          // });
+
+          var layerList = new LayerList({
+            container: document.createElement("div"),
+            view: view
+          });
+          var layerListExpand = new Expand({
+            expandIconClass: "esri-icon-layers",
+            view: view,
+            content: layerList.domNode
+          });
+          view.ui.add(layerListExpand, {
+            position: "top-right"
+          });
+          var legendImage = document.createElement("img");
+          legendImage.style.border = "1px solid #333";
+          legendImage.style.margin = "0";
+          legendImage.src = "/audubon/apps/assets/images/AudubonLegend.png";
+          var legendExpand = new Expand({
+            expandIconClass: "esri-icon-chart",
+            view: view,
+            content: legendImage
+          });
+          view.ui.add(legendExpand, {
+            position: "top-right"
+          });
+
+          let play = false;
+          const btnPlay = document.getElementById("btnPlay");
+          btnPlay.addEventListener("click", () => {
+            play = !play;
+            btnPlay.className = play ? "esri-icon-pause" : "esri-icon-play";
+          });
+          view.ui.add("controls", {
+            position: "bottom-right"
+          });
+          setInterval(() => {
+            if (play) {
+              let t = slider.values[0] + 1;
+              if (t > 499) {
+                t = 0;
+              }
+              slider.values = [t];
+              layer.timestamp = t;
+              abundance.timestamp = t;
+            }
+          }, 50);
+        });
+      });
+    </script>
+  </head>
+
+  <body>
+    <div id="viewDiv"></div>
+    <div id="controls" class="esri-widget">
+      <h4 style="padding: 1em; text-align: center;">Hours into the migration</h4>
+      <div id="slider" class="slider"></div>
+      <div style="text-align: center; padding: 1em;">
+        <button style="padding: 0.5em; background-color: #222; border: 1px solid #333; color: #69dcff;" class="esri-icon-play" id="btnPlay"></button>
+      </div>
+    </div>
+  </body>
+</html>
