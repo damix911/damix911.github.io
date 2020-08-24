@@ -262,6 +262,7 @@
         "esri/views/MapView",
 
         "esri/widgets/Slider",
+        "esri/widgets/Expand",
 
         "esri/views/2d/layers/BaseLayerViewGL2D",
 
@@ -290,6 +291,7 @@
         Polyline,
         MapView,
         Slider,
+        Expand,
         BaseLayerViewGL2D,
         webMercatorUtils,
         BasemapGallery,
@@ -1068,6 +1070,7 @@
             title: "Relative abundance",
             timestamp: 0,
             abundances,
+            visible: false
             // spatialReference: {
             //   wkt: `PROJCS["Lambert_Azimuthal_Equal_Area",GEOGCS["GCS_WGS_1984",DATUM["D_unknown",SPHEROID["WGS84",6378137.0,298.257223563]],PRIMEM["Greenwich",0.0],UNIT["Degree",0.0174532925199433]],PROJECTION["Lambert_Azimuthal_Equal_Area"],PARAMETER["false_easting",0.0],PARAMETER["false_northing",0.0],PARAMETER["central_meridian",-90.0],PARAMETER["latitude_of_origin",15.0],UNIT["Meter",1.0]]`
             // }
@@ -1215,9 +1218,27 @@
           // });
 
           var layerList = new LayerList({
+            container: document.createElement("div"),
             view: view
           });
-          view.ui.add(layerList, {
+          var layerListExpand = new Expand({
+            expandIconClass: "esri-icon-layers",
+            view: view,
+            content: layerList.domNode
+          });
+          view.ui.add(layerListExpand, {
+            position: "top-right"
+          });
+          var legendImage = document.createElement("img");
+          legendImage.style.border = "1px solid #333";
+          legendImage.style.margin = "0";
+          legendImage.src = "/audubon/apps/assets/images/AudubonLegend.png";
+          var legendExpand = new Expand({
+            expandIconClass: "esri-icon-chart",
+            view: view,
+            content: legendImage
+          });
+          view.ui.add(legendExpand, {
             position: "top-right"
           });
         });
