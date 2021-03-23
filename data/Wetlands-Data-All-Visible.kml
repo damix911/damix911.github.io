@@ -1,0 +1,196 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Folder>
+	<name>FWS Wetlands &amp; Riparian</name>
+	<open>1</open>
+	<description><![CDATA[<body style="background-color: #FFFFFF">
+<h3 class="style3"><font color="#008080">Click for information!</font></h3>
+<p><font face="Arial, Helvetica, sans-serif">For more information please visit 
+our website at:</font></p>
+<blockquote>
+	<font face="Arial, Helvetica, sans-serif">
+	<a href="http://www.fws.gov/wetlands/">http://www.fws.gov/wetlands/</a></font></blockquote>
+<p><font face="Arial, Helvetica, sans-serif">To <strong>Download Wetlands Data</strong>, please follow this link:</font></p>
+<blockquote>
+	<font face="Arial, Helvetica, sans-serif">
+	<a href="http://www.fws.gov/wetlands/Data/Data-Download.html">http://www.fws.gov/wetlands/Data/Data-Download.html</a></font></blockquote><hr>
+<p><font face="Arial, Helvetica, sans-serif"><strong>Please use the <a href="http://www.fws.gov/wetlands/Data/Mapper.html">Wetlands Mapper</a>  for an easy-to-use, map like views of America’s Wetland resources. It integrates digital map data along with other resource information to produce current information on the status, extent, characteristics and functions of wetlands, riparian, and deepwater habitats.</strong></font></p><hr>
+
+<p><font face="Arial, Helvetica, sans-serif">To download the latest version of this script and the latest Google Earth OGC compliant Web Map Service information, please follow this link:</font></p>
+<blockquote>
+	<font face="Arial, Helvetica, sans-serif">
+	<a href="http://www.fws.gov/wetlands/Data/Google-Earth.html">http://www.fws.gov/wetlands/Data/Google-Earth.html</a></font></blockquote>
+<h3><font color="#008080" face="Arial, Helvetica, sans-serif">Wetlands Team</font></h3>
+<p><font face="Arial, Helvetica, sans-serif">For questions or comments about 
+seamless Wetlands spatial data, Wetlands Mapper IMS function and content, OGC 
+Web map service information, eMail the Wetlands Team: <br></br><br>
+	Wetlands_Team@fws.gov</br></font></p>
+</body>]]></description>
+	<LookAt>
+		<longitude>-97.22053916788357</longitude>
+		<latitude>38.11325068438288</latitude>
+		<altitude>0</altitude>
+		<heading>-0.1552574989014097</heading>
+		<tilt>8.618353854444484e-015</tilt>
+		<range>3565724.474275306</range>
+	</LookAt>
+	<NetworkLink>
+		<name>Wetlands Overview</name>
+		<description><![CDATA[<body style="background-color: #FFFFFF">
+<p><font face="Arial, Helvetica, sans-serif">(Turn off when Wetlands Data displays)</font></p>
+</body>]]></description>
+		<LookAt>
+			<longitude>-12.5074765890335</longitude>
+			<latitude>28.50750101223753</latitude>
+			<altitude>0</altitude>
+			<heading>0</heading>
+			<tilt>0</tilt>
+			<range>20590823.61647402</range>
+		</LookAt>
+		<Region>
+			<LatLonAltBox>
+				<north>90</north>
+				<south>-90</south>
+				<east>180</east>
+				<west>-180</west>
+				<minAltitude>0</minAltitude>
+				<maxAltitude>0</maxAltitude>
+			</LatLonAltBox>
+			<Lod>
+				<minLodPixels>128</minLodPixels>
+				<maxLodPixels>-1</maxLodPixels>
+				<minFadeExtent>0</minFadeExtent>
+				<maxFadeExtent>0</maxFadeExtent>
+			</Lod>
+			<LatLonBox>
+<north>71.43968959202567</north>
+<south>-14.42468756755061</south>
+<east>145.8834743069205</east>
+<west>-170.8984274849875</west>
+</LatLonBox>
+		</Region>
+		<Link>
+			<href>https://fwspublicservices.wim.usgs.gov/server/rest/services/Wetlands_Raster/ImageServer/exportImage?</href>
+			<viewRefreshMode>onStop</viewRefreshMode>
+			<viewRefreshTime>2</viewRefreshTime>
+			<viewFormat>f=kmz&amp;bboxSR=4326&amp;imageSR=4326&amp;format=jpgpng&amp;bbox=[bboxWest],[bboxSouth],[bboxEast],[bboxNorth]&amp;size=[horizPixels],[vertPixels]&amp;</viewFormat>
+		</Link>
+	</NetworkLink>
+	<NetworkLink>
+		<name>&lt;a href=&quot;http://www.fws.gov/wetlands/Data/Wetlands-Product-Summary.html&quot;&gt;Wetland Data&lt;/a&gt;</name>
+		<description><![CDATA[<body style="background-color: #FFFFFF">
+<p><font face="Arial, Helvetica, sans-serif">(Zoom in until Wetlands Data displays)</font></p>
+</body>]]></description>
+		<LookAt>
+			<longitude>-97.22053953892112</longitude>
+			<latitude>38.11325032067204</latitude>
+			<altitude>0</altitude>
+			<heading>-0.155257727912386</heading>
+			<tilt>0</tilt>
+			<range>3568793.017519627</range>
+			<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+		</LookAt>
+		<Url>
+			<href>https://fwspublicservices.wim.usgs.gov/server/services/Wetlands/MapServer/KmlServer?Composite=true&amp;LayerIDs=0&amp;</href>
+			<viewRefreshMode>onStop</viewRefreshMode>
+			<viewRefreshTime>2</viewRefreshTime>
+			<viewFormat>Composite=false&amp;LayerIDs=0&amp;VectorsToRasters=true&amp;BBOX=[bboxWest],[bboxSouth],[bboxEast],[bboxNorth];CAMERA=[lookatLon],[lookatLat],[lookatRange],[lookatTilt],[lookatHeading];VIEW=[horizFov],[vertFov],[horizPixels],[vertPixels],[terrainEnabled]</viewFormat>
+		</Url>
+	</NetworkLink>
+	<NetworkLink>
+		<name>Wetlands Status</name>
+		<visibility>1</visibility>
+		<LookAt>
+			<longitude>-97.22053953892112</longitude>
+			<latitude>38.11325032067204</latitude>
+			<altitude>0</altitude>
+			<heading>-0.155257727912386</heading>
+			<tilt>0</tilt>
+			<range>3568793.017519627</range>
+			<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+		</LookAt>
+		<Url>
+			<href>https://fwspublicservices.wim.usgs.gov/server/services/Wetlands_Status/MapServer/KmlServer?Composite=false&amp;VectorsToRasters=true&amp;LayerIDs=0&amp;</href>
+			<viewRefreshMode>onStop</viewRefreshMode>
+			<viewRefreshTime>2</viewRefreshTime>
+			<viewFormat>Composite=false&amp;LayerIDs=0&amp;VectorsToRasters=true&amp;BBOX=[bboxWest],[bboxSouth],[bboxEast],[bboxNorth];CAMERA=[lookatLon],[lookatLat],[lookatRange],[lookatTilt],[lookatHeading];VIEW=[horizFov],[vertFov],[horizPixels],[vertPixels],[terrainEnabled]</viewFormat>
+		</Url>
+	</NetworkLink>
+	<ScreenOverlay id="USFWS Logo">
+		<name>&lt;a href=&quot;http://www.fws.gov&quot;&gt;Logo: US Fish and Wildlife Service&lt;/a&gt;</name>
+		<Icon>
+			<href>https://www.fws.gov/wetlands/system/images/GE-FWS-logo2005.gif</href>
+		</Icon>
+		<overlayXY x="0" y="1" xunits="fraction" yunits="fraction"/>
+		<screenXY x="0.005" y="0.995" xunits="fraction" yunits="fraction"/>
+		<rotationXY x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
+		<size x="0" y="0" xunits="pixels" yunits="pixels"/>
+	</ScreenOverlay>
+	<NetworkLink>
+		<name>Riparian Status</name>
+		<visibility>1</visibility>
+		<description><![CDATA[<body style="background-color: #FFFFFF">
+<p><font face="Arial, Helvetica, sans-serif">(Turn off when Riparian Data displays)</font></p>
+</body>]]></description>
+		<LookAt>
+			<longitude>-97.22053953892112</longitude>
+			<latitude>38.11325032067204</latitude>
+			<altitude>0</altitude>
+			<heading>-0.155257727912386</heading>
+			<tilt>0</tilt>
+			<range>3568793.017519627</range>
+			<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+		</LookAt>
+		<Url>
+			<href>https://fwspublicservices.wim.usgs.gov/server/services/Riparian/MapServer/KmlServer?Composite=false&amp;VectorsToRasters=true&amp;LayerIDs=0&amp;</href>
+			<viewRefreshMode>onStop</viewRefreshMode>
+			<viewRefreshTime>2</viewRefreshTime>
+			<viewFormat>Composite=false&amp;LayerIDs=1&amp;VectorsToRasters=true&amp;BBOX=[bboxWest],[bboxSouth],[bboxEast],[bboxNorth];CAMERA=[lookatLon],[lookatLat],[lookatRange],[lookatTilt],[lookatHeading];VIEW=[horizFov],[vertFov],[horizPixels],[vertPixels],[terrainEnabled]</viewFormat>
+		</Url>
+	</NetworkLink>
+	<NetworkLink>
+		<name>&lt;a href=&quot;http://www.fws.gov/wetlands/Other/Riparian-Product-Summary.html&quot;&gt;Riparian Data&lt;/a&gt;</name>
+		<visibility>1</visibility>
+		<description><![CDATA[<body style="background-color: #FFFFFF">
+<p><font face="Arial, Helvetica, sans-serif">(Zoom in until Riparian Data displays)</font></p>
+</body>]]></description>
+		<LookAt>
+			<longitude>-97.22053953892112</longitude>
+			<latitude>38.11325032067204</latitude>
+			<altitude>0</altitude>
+			<heading>-0.155257727912386</heading>
+			<tilt>0</tilt>
+			<range>3568793.017519627</range>
+			<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+		</LookAt>
+		<Url>
+			<href>https://fwspublicservices.wim.usgs.gov/server/services/Riparian/MapServer/KmlServer?Composite=false&amp;VectorsToRasters=true&amp;LayerIDs=1&amp;</href>
+			<viewRefreshMode>onStop</viewRefreshMode>
+			<viewRefreshTime>2</viewRefreshTime>
+			<viewFormat>Composite=false&amp;LayerIDs=0&amp;VectorsToRasters=true&amp;BBOX=[bboxWest],[bboxSouth],[bboxEast],[bboxNorth];CAMERA=[lookatLon],[lookatLat],[lookatRange],[lookatTilt],[lookatHeading];VIEW=[horizFov],[vertFov],[horizPixels],[vertPixels],[terrainEnabled]</viewFormat>
+		</Url>
+	</NetworkLink>
+	<ScreenOverlay>
+		<name>Legend: Status Map</name>
+		<visibility>1</visibility>
+		<Icon>
+			<href>https://www.fws.gov/wetlands/system/images/GE-map-status-legend.png</href>
+		</Icon>
+		<overlayXY x="0.5" y="0" xunits="fraction" yunits="fraction"/>
+		<screenXY x="0.72" y="0.03" xunits="fraction" yunits="fraction"/>
+		<rotationXY x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
+		<size x="180" y="100" xunits="pixels" yunits="pixels"/>
+	</ScreenOverlay>
+	<ScreenOverlay id="NWILEGEND">
+		<name>Legend: Wetland Types</name>
+		<description><![CDATA[<h3><font color="#008080">Click for information!</font></h3>For more information regarding wetland types<br>and codes, please follow this link:</br><br></br><br>http://www.fws.gov/wetlands/data/Wetland-Codes.html</br>]]></description>
+		<Icon>
+			<href>https://www.fws.gov/wetlands/system/images/GE-wetland-types-legend.png</href>
+		</Icon>
+		<overlayXY x="0" y="0" xunits="fraction" yunits="fraction"/>
+		<screenXY x="0.005" y="0.02" xunits="fraction" yunits="fraction"/>
+		<rotationXY x="0.5" y="0.5" xunits="fraction" yunits="fraction"/>
+		<size x="0" y="0" xunits="pixels" yunits="pixels"/>
+	</ScreenOverlay>
+</Folder>
+</kml>
